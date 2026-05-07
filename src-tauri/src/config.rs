@@ -10,6 +10,7 @@ pub struct ConfigProfile {
     pub claude_args: Vec<String>,
     pub env_vars: HashMap<String, String>,
     pub is_default: bool,
+    pub last_used_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -71,6 +71,7 @@ fn main() {
             commands::save_profile,
             commands::get_profiles,
             commands::delete_profile,
+            commands::update_profile_last_used,
             commands::get_claude_version,
             commands::check_claude_update,
             commands::update_claude_code,
