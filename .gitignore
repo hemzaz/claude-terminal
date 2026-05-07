@@ -35,6 +35,10 @@ src-tauri/NSIS/
 src-tauri/tauri-signing-key.key
 src-tauri/tauri-signing-key.key.pub
 
+# oh-my-claudecode runtime state (per-session local artifacts)
+.omc/
+**/.omc/
+
 # Test coverage
 coverage/
 
