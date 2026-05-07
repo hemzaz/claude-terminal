@@ -21,7 +21,7 @@ interface MemoryFileInfo {
 type Tab = 'claudemd' | 'memory' | 'rules';
 
 export function MemoryEditor() {
-  const { closeMemoryEditor } = useAppStore();
+  const { closeModal } = useAppStore();
   const [activeTab, setActiveTab] = useState<Tab>('claudemd');
 
   // CLAUDE.md state
@@ -185,7 +185,7 @@ export function MemoryEditor() {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
       className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
-      onDoubleClick={closeMemoryEditor}
+      onDoubleClick={closeModal}
     >
       <motion.div
         initial={{ opacity: 0, scale: 0.98 }}
@@ -204,7 +204,7 @@ export function MemoryEditor() {
             <span className="text-text-tertiary text-[11px]">F8</span>
           </div>
           <button
-            onClick={closeMemoryEditor}
+            onClick={closeModal}
             className="p-1 rounded hover:bg-white/[0.06] text-text-tertiary transition-colors"
           >
             <X size={16} />

@@ -92,7 +92,7 @@ interface SavedTerminalConfig {
 }
 
 function App() {
-  const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, orchestrationOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, globalSearchOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
+  const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, orchestrationOpen, activeModal, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openModal } = useAppStore();
   const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal } = useTerminalStore();
   const [showSetup, setShowSetup] = useState<boolean | null>(null);
   const { notify } = useNotification();
@@ -123,7 +123,7 @@ function App() {
           // Fresh install — just record the current version, no popup
           setLastSeenVersion(currentVersion);
         } else if (lastSeenVersion !== currentVersion) {
-          openWhatsNew();
+          openModal('whatsNew');
         }
       } catch (err) {
         console.error('Failed to check version for What\'s New:', err);
@@ -131,7 +131,7 @@ function App() {
     };
 
     checkWhatsNew();
-  }, [showSetup, lastSeenVersion, setLastSeenVersion, openWhatsNew]);
+  }, [showSetup, lastSeenVersion, setLastSeenVersion, openModal]);
 
   // Push the persisted error-reporting preference to Rust on mount.
   // The Rust flag defaults to false, so until this fires no panics are reported.
@@ -411,21 +411,21 @@ function App() {
           <StatusBar />
 
           <AnimatePresence>
-            {settingsOpen && <SettingsModal />}
-            {profileModalOpen && <ProfileModal />}
-            {newTerminalModalOpen && <NewTerminalModal />}
-            {workspaceModalOpen && <WorkspaceModal />}
-            {worktreeModalOpen && <WorktreeModal />}
-            {sessionHistoryOpen && <SessionHistory />}
-            {snippetsModalOpen && <SnippetsModal />}
-            {whatsNewOpen && <WhatsNewModal />}
-            {claudeConfigOpen && <ClaudeConfigModal />}
-            {sessionTimelineOpen && <SessionTimeline />}
-            {memoryEditorOpen && <MemoryEditor />}
+            {activeModal === 'settings' && <SettingsModal />}
+            {activeModal === 'profile' && <ProfileModal />}
+            {activeModal === 'newTerminal' && <NewTerminalModal />}
+            {activeModal === 'workspace' && <WorkspaceModal />}
+            {activeModal === 'worktree' && <WorktreeModal />}
+            {activeModal === 'sessionHistory' && <SessionHistory />}
+            {activeModal === 'snippets' && <SnippetsModal />}
+            {activeModal === 'whatsNew' && <WhatsNewModal />}
+            {activeModal === 'claudeConfig' && <ClaudeConfigModal />}
+            {activeModal === 'sessionTimeline' && <SessionTimeline />}
+            {activeModal === 'memoryEditor' && <MemoryEditor />}
           </AnimatePresence>
-          {commandPaletteOpen && <CommandPalette />}
+          {activeModal === 'commandPalette' && <CommandPalette />}
           <AnimatePresence>
-            {globalSearchOpen && <GlobalSearchModal />}
+            {activeModal === 'globalSearch' && <GlobalSearchModal />}
           </AnimatePresence>
         </>
       )}

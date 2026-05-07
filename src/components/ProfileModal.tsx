@@ -18,7 +18,7 @@ interface ConfigProfile {
 }
 
 export function ProfileModal() {
-  const { closeProfileModal, editingProfileId } = useAppStore();
+  const { closeModal, editingProfileId } = useAppStore();
   const [profiles, setProfiles] = useState<ConfigProfile[]>([]);
   const [selectedProfile, setSelectedProfile] = useState<ConfigProfile | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -113,7 +113,7 @@ export function ProfileModal() {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
       className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
-      onDoubleClick={closeProfileModal}
+      onDoubleClick={closeModal}
     >
       <motion.div
         initial={{ opacity: 0 }}
@@ -127,7 +127,7 @@ export function ProfileModal() {
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h2 className="text-text-primary text-[14px] font-semibold">Configuration Profiles</h2>
           <button
-            onClick={closeProfileModal}
+            onClick={closeModal}
             className="p-1 rounded hover:bg-white/[0.06] text-text-tertiary transition-colors"
           >
             <X size={16} />

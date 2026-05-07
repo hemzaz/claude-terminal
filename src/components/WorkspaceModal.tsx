@@ -22,7 +22,7 @@ interface SavedTerminalConfig {
 }
 
 export function WorkspaceModal() {
-  const { closeWorkspaceModal } = useAppStore();
+  const { closeModal } = useAppStore();
   const { terminals, createTerminal } = useTerminalStore();
 
   const [workspaces, setWorkspaces] = useState<WorkspaceInfo[]>([]);
@@ -78,7 +78,7 @@ export function WorkspaceModal() {
         );
       }
       toast.success('Workspace Loaded', `"${selectedWorkspace.name}" with ${configs.length} terminal${configs.length !== 1 ? 's' : ''}.`);
-      closeWorkspaceModal();
+      closeModal();
     } catch (err) {
       console.error('Failed to load workspace:', err);
       toast.error('Load Failed', 'Could not load workspace.');
@@ -119,7 +119,7 @@ export function WorkspaceModal() {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
       className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
-      onDoubleClick={closeWorkspaceModal}
+      onDoubleClick={closeModal}
     >
       <motion.div
         initial={{ opacity: 0 }}
@@ -136,7 +136,7 @@ export function WorkspaceModal() {
             <h2 className="text-text-primary text-[14px] font-semibold">Workspaces</h2>
           </div>
           <button
-            onClick={closeWorkspaceModal}
+            onClick={closeModal}
             className="p-1 rounded hover:bg-white/[0.06] text-text-tertiary transition-colors"
           >
             <X size={16} />

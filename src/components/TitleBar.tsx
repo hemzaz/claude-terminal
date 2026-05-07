@@ -41,8 +41,7 @@ export function TitleBar() {
     toggleHints,
     toggleChanges,
     toggleOrchestration,
-    openSettings,
-    openCommandPalette,
+    openModal,
     hintsOpen,
     changesOpen,
     orchestrationOpen,
@@ -186,7 +185,7 @@ export function TitleBar() {
 
         {/* Project breadcrumb — IntelliJ main-toolbar project widget */}
         <button
-          onClick={openCommandPalette}
+          onClick={() => openModal('commandPalette')}
           className="no-drag group flex items-center gap-1.5 h-7 ml-1 pl-2 pr-2 rounded-[6px] hover:bg-white/[0.06] transition-colors max-w-[360px]"
           title={active?.config.working_directory || 'No active terminal'}
         >
@@ -309,7 +308,7 @@ export function TitleBar() {
 
           <div className="w-px h-4 bg-[var(--ij-divider-soft)] mx-1" />
 
-          <button onClick={openSettings} className={iconBtn(false)} title="Settings (Ctrl+,)">
+          <button onClick={() => openModal('settings')} className={iconBtn(false)} title="Settings (Ctrl+,)">
             <Settings size={15} strokeWidth={1.75} />
           </button>
         </div>

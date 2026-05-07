@@ -5,6 +5,20 @@ import { invoke } from '@tauri-apps/api/core';
 export type GridLayout = '1x1' | '1x2' | '2x1' | '2x2' | '1x3' | '3x1' | '2x3' | '3x2' | '2x4' | '4x2';
 
 export type SplitOrientation = 'horizontal' | 'vertical';
+export type ModalKind =
+  | 'settings'
+  | 'profile'
+  | 'newTerminal'
+  | 'workspace'
+  | 'worktree'
+  | 'globalSearch'
+  | 'commandPalette'
+  | 'sessionHistory'
+  | 'snippets'
+  | 'claudeConfig'
+  | 'sessionTimeline'
+  | 'memoryEditor'
+  | 'whatsNew';
 
 export interface FileTabState {
   path: string;
@@ -28,12 +42,8 @@ interface AppState {
   sidebarCollapsed: boolean;  // true = icon rail (48px), false = full width (280px)
   hintsOpen: boolean;
   changesOpen: boolean;
-  settingsOpen: boolean;
-  profileModalOpen: boolean;
+  activeModal: ModalKind | null;
   editingProfileId: string | null;
-  newTerminalModalOpen: boolean;
-  workspaceModalOpen: boolean;
-  worktreeModalOpen: boolean;
   worktreeModalRepoPath: string | null;
   defaultClaudeArgs: string[];
   notifyOnFinish: boolean;
@@ -60,20 +70,11 @@ interface AppState {
   // File Changes panel split: Repositories (top) vs Changes (bottom)
   repositoriesHeightRatio: number; // 0.15..0.85
 
-  // Global Search (Ctrl+Shift+F)
-  globalSearchOpen: boolean;
-
   // Grid state
   gridMode: boolean;
   gridTerminalIds: string[];
   gridLayout: GridLayout;
   gridFocusedIndex: number | null;
-
-  // Command Palette (F1)
-  commandPaletteOpen: boolean;
-
-  // Session History (F2)
-  sessionHistoryOpen: boolean;
 
   // Crash Recovery (F3)
   showRestoreBanner: boolean;
@@ -88,20 +89,6 @@ interface AppState {
   // Agent Teams (F4)
   orchestrationOpen: boolean;
 
-  // Snippets (F5)
-  snippetsModalOpen: boolean;
-
-  // Claude Config (F6)
-  claudeConfigOpen: boolean;
-
-  // Session Timeline (F7)
-  sessionTimelineOpen: boolean;
-
-  // Memory Editor (F8)
-  memoryEditorOpen: boolean;
-
-  // What's New
-  whatsNewOpen: boolean;
   lastSeenVersion: string | null;
 
   // macOS update channel — Homebrew tap (default) or in-app updater. Ignored
@@ -114,16 +101,9 @@ interface AppState {
   toggleHints: () => void;
   toggleChanges: () => void;
   triggerChangesRefresh: () => void;
-  openSettings: () => void;
-  closeSettings: () => void;
-  openProfileModal: (profileId?: string) => void;
-  closeProfileModal: () => void;
-  openNewTerminalModal: () => void;
-  closeNewTerminalModal: () => void;
-  openWorkspaceModal: () => void;
-  closeWorkspaceModal: () => void;
-  openWorktreeModal: (repoPath: string) => void;
-  closeWorktreeModal: () => void;
+  openModal: (modal: ModalKind, options?: { profileId?: string; repoPath?: string }) => void;
+  closeModal: () => void;
+  replaceModal: (modal: ModalKind, options?: { profileId?: string; repoPath?: string }) => void;
   setDefaultClaudeArgs: (args: string[]) => void;
   setNotifyOnFinish: (enabled: boolean) => void;
   setRestoreSession: (enabled: boolean) => void;
@@ -145,11 +125,6 @@ interface AppState {
   setRepositoriesHeightRatio: (ratio: number) => void;
   toggleToolsCollapsed: () => void;
 
-  // Global Search actions (Ctrl+Shift+F)
-  openGlobalSearch: () => void;
-  closeGlobalSearch: () => void;
-  toggleGlobalSearch: () => void;
-
   // Grid actions
   toggleGridMode: () => void;
   setGridMode: (enabled: boolean) => void;
@@ -161,15 +136,6 @@ interface AppState {
   clearGrid: () => void;
   swapGridPositions: (fromIndex: number, toIndex: number) => void;
   replaceInGrid: (index: number, terminalId: string) => void;
-
-  // Command Palette actions (F1)
-  openCommandPalette: () => void;
-  closeCommandPalette: () => void;
-  toggleCommandPalette: () => void;
-
-  // Session History actions (F2)
-  openSessionHistory: () => void;
-  closeSessionHistory: () => void;
 
   // Crash Recovery actions (F3)
   setShowRestoreBanner: (show: boolean) => void;
@@ -186,26 +152,6 @@ interface AppState {
   // Agent Teams actions (F4)
   toggleOrchestration: () => void;
 
-  // Snippets actions (F5)
-  openSnippetsModal: () => void;
-  closeSnippetsModal: () => void;
-
-  // Claude Config actions (F6)
-  openClaudeConfig: () => void;
-  closeClaudeConfig: () => void;
-
-  // Session Timeline actions (F7)
-  openSessionTimeline: () => void;
-  closeSessionTimeline: () => void;
-  toggleSessionTimeline: () => void;
-
-  // Memory Editor actions (F8)
-  openMemoryEditor: () => void;
-  closeMemoryEditor: () => void;
-
-  // What's New actions
-  openWhatsNew: () => void;
-  closeWhatsNew: () => void;
   setLastSeenVersion: (version: string) => void;
 
   // macOS update source actions
@@ -237,6 +183,14 @@ export function getOptimalLayout(count: number): GridLayout {
   }
 }
 
+function getModalState(modal: ModalKind | null, options?: { profileId?: string; repoPath?: string }) {
+  return {
+    activeModal: modal,
+    editingProfileId: modal === 'profile' ? options?.profileId ?? null : null,
+    worktreeModalRepoPath: modal === 'worktree' ? options?.repoPath ?? null : null,
+  };
+}
+
 export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
@@ -244,12 +198,8 @@ export const useAppStore = create<AppState>()(
       sidebarCollapsed: false,
       hintsOpen: false,
       changesOpen: false,
-      settingsOpen: false,
-      profileModalOpen: false,
+      activeModal: null,
       editingProfileId: null,
-      newTerminalModalOpen: false,
-      workspaceModalOpen: false,
-      worktreeModalOpen: false,
       worktreeModalRepoPath: null,
       defaultClaudeArgs: [],
       notifyOnFinish: true,
@@ -278,20 +228,11 @@ export const useAppStore = create<AppState>()(
       // File Changes split (default: repositories takes 35% of available column)
       repositoriesHeightRatio: 0.35,
 
-      // Global Search (Ctrl+Shift+F)
-      globalSearchOpen: false,
-
       // Grid state
       gridMode: false,
       gridTerminalIds: [],
       gridLayout: '1x1',
       gridFocusedIndex: null,
-
-      // Command Palette (F1)
-      commandPaletteOpen: false,
-
-      // Session History (F2)
-      sessionHistoryOpen: false,
 
       // Crash Recovery (F3)
       showRestoreBanner: false,
@@ -306,20 +247,6 @@ export const useAppStore = create<AppState>()(
       // Agent Teams (F4)
       orchestrationOpen: false,
 
-      // Snippets (F5)
-      snippetsModalOpen: false,
-
-      // Claude Config (F6)
-      claudeConfigOpen: false,
-
-      // Session Timeline (F7)
-      sessionTimelineOpen: false,
-
-      // Memory Editor (F8)
-      memoryEditorOpen: false,
-
-      // What's New
-      whatsNewOpen: false,
       lastSeenVersion: null,
 
       // macOS update source — defaults to Homebrew (cleanest UX, no quarantine
@@ -332,16 +259,9 @@ export const useAppStore = create<AppState>()(
       toggleHints: () => set((state) => ({ hintsOpen: !state.hintsOpen })),
       toggleChanges: () => set((state) => ({ changesOpen: !state.changesOpen })),
       triggerChangesRefresh: () => set((state) => ({ changesRefreshTrigger: state.changesRefreshTrigger + 1 })),
-      openSettings: () => set({ settingsOpen: true }),
-      closeSettings: () => set({ settingsOpen: false }),
-      openProfileModal: (profileId) => set({ profileModalOpen: true, editingProfileId: profileId || null }),
-      closeProfileModal: () => set({ profileModalOpen: false, editingProfileId: null }),
-      openNewTerminalModal: () => set({ newTerminalModalOpen: true }),
-      closeNewTerminalModal: () => set({ newTerminalModalOpen: false }),
-      openWorkspaceModal: () => set({ workspaceModalOpen: true }),
-      closeWorkspaceModal: () => set({ workspaceModalOpen: false }),
-      openWorktreeModal: (repoPath) => set({ worktreeModalOpen: true, worktreeModalRepoPath: repoPath }),
-      closeWorktreeModal: () => set({ worktreeModalOpen: false, worktreeModalRepoPath: null }),
+      openModal: (modal, options) => set(getModalState(modal, options)),
+      closeModal: () => set(getModalState(null)),
+      replaceModal: (modal, options) => set(getModalState(modal, options)),
       setDefaultClaudeArgs: (args) => set({ defaultClaudeArgs: args }),
       setNotifyOnFinish: (enabled) => set({ notifyOnFinish: enabled }),
       setRestoreSession: (enabled) => set({ restoreSession: enabled }),
@@ -357,10 +277,6 @@ export const useAppStore = create<AppState>()(
         repositoriesHeightRatio: Math.max(0.15, Math.min(0.85, ratio)),
       }),
       toggleToolsCollapsed: () => set((state) => ({ toolsCollapsed: !state.toolsCollapsed })),
-
-      openGlobalSearch: () => set({ globalSearchOpen: true }),
-      closeGlobalSearch: () => set({ globalSearchOpen: false }),
-      toggleGlobalSearch: () => set((state) => ({ globalSearchOpen: !state.globalSearchOpen })),
 
       setActiveFilePath: (path) => set({ activeFilePath: path }),
 
@@ -584,15 +500,6 @@ export const useAppStore = create<AppState>()(
         return { gridTerminalIds: newIds };
       }),
 
-      // Command Palette actions (F1)
-      openCommandPalette: () => set({ commandPaletteOpen: true }),
-      closeCommandPalette: () => set({ commandPaletteOpen: false }),
-      toggleCommandPalette: () => set((state) => ({ commandPaletteOpen: !state.commandPaletteOpen })),
-
-      // Session History actions (F2)
-      openSessionHistory: () => set({ sessionHistoryOpen: true }),
-      closeSessionHistory: () => set({ sessionHistoryOpen: false }),
-
       // Crash Recovery actions (F3)
       setShowRestoreBanner: (show) => set({ showRestoreBanner: show }),
       setPendingRestoreConfigs: (configs) => set({ pendingRestoreConfigs: configs }),
@@ -608,26 +515,6 @@ export const useAppStore = create<AppState>()(
       // Agent Teams actions (F4)
       toggleOrchestration: () => set((state) => ({ orchestrationOpen: !state.orchestrationOpen })),
 
-      // Snippets actions (F5)
-      openSnippetsModal: () => set({ snippetsModalOpen: true }),
-      closeSnippetsModal: () => set({ snippetsModalOpen: false }),
-
-      // Claude Config actions (F6)
-      openClaudeConfig: () => set({ claudeConfigOpen: true }),
-      closeClaudeConfig: () => set({ claudeConfigOpen: false }),
-
-      // Session Timeline actions (F7)
-      openSessionTimeline: () => set({ sessionTimelineOpen: true }),
-      closeSessionTimeline: () => set({ sessionTimelineOpen: false }),
-      toggleSessionTimeline: () => set((state) => ({ sessionTimelineOpen: !state.sessionTimelineOpen })),
-
-      // Memory Editor actions (F8)
-      openMemoryEditor: () => set({ memoryEditorOpen: true }),
-      closeMemoryEditor: () => set({ memoryEditorOpen: false }),
-
-      // What's New actions
-      openWhatsNew: () => set({ whatsNewOpen: true }),
-      closeWhatsNew: () => set({ whatsNewOpen: false }),
       setLastSeenVersion: (version) => set({ lastSeenVersion: version }),
 
       // macOS update source

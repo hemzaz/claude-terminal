@@ -14,7 +14,7 @@ interface SessionHistoryEntry {
 }
 
 export function SessionHistory() {
-  const { closeSessionHistory } = useAppStore();
+  const { closeModal } = useAppStore();
   const [entries, setEntries] = useState<SessionHistoryEntry[]>([]);
   const [selectedEntry, setSelectedEntry] = useState<SessionHistoryEntry | null>(null);
   const [logContent, setLogContent] = useState<string>('');
@@ -95,7 +95,7 @@ export function SessionHistory() {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
       className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
-      onDoubleClick={closeSessionHistory}
+      onDoubleClick={closeModal}
     >
       <motion.div
         initial={{ opacity: 0 }}
@@ -112,7 +112,7 @@ export function SessionHistory() {
             <h2 className="text-text-primary text-[14px] font-semibold">Session History</h2>
           </div>
           <button
-            onClick={closeSessionHistory}
+            onClick={closeModal}
             className="p-1 rounded hover:bg-white/[0.06] text-text-tertiary transition-colors"
           >
             <X size={16} />

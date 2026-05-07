@@ -41,7 +41,7 @@ function formatTime(dateStr: string): string {
 }
 
 export function SessionTimeline() {
-  const { closeSessionTimeline } = useAppStore();
+  const { closeModal } = useAppStore();
   const { createTerminal, terminals } = useTerminalStore();
   const [sessions, setSessions] = useState<SessionHistoryEntry[]>([]);
   const [filter, setFilter] = useState('');
@@ -81,7 +81,7 @@ export function SessionTimeline() {
       const colorTag = colorTags[terminals.size % colorTags.length];
 
       await createTerminal(label, '.', ['--continue'], {}, colorTag);
-      closeSessionTimeline();
+      closeModal();
     } catch (err) {
       console.error('Failed to resume session:', err);
     } finally {
@@ -96,7 +96,7 @@ export function SessionTimeline() {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
       className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
-      onDoubleClick={closeSessionTimeline}
+      onDoubleClick={closeModal}
     >
       <motion.div
         initial={{ opacity: 0, scale: 0.98 }}
@@ -114,7 +114,7 @@ export function SessionTimeline() {
             <span className="text-text-tertiary text-[11px]">F7</span>
           </div>
           <button
-            onClick={closeSessionTimeline}
+            onClick={closeModal}
             className="p-1 rounded hover:bg-white/[0.06] text-text-tertiary transition-colors"
           >
             <X size={16} />

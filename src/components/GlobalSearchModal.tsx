@@ -67,7 +67,7 @@ function HighlightedLine({
 }
 
 export function GlobalSearchModal() {
-  const closeGlobalSearch = useAppStore((s) => s.closeGlobalSearch);
+  const closeModal = useAppStore((s) => s.closeModal);
   const openFileTab = useAppStore((s) => s.openFileTab);
   const pinnedRepoPath = useAppStore((s) => s.pinnedRepoPath);
   const activeCwd = useTerminalStore((s) => {
@@ -163,12 +163,12 @@ export function GlobalSearchModal() {
     async (file: FileSearchResult) => {
       try {
         await openFileTab(file.file_path);
-        closeGlobalSearch();
+        closeModal();
       } catch {
         /* errors surface via the file tab itself */
       }
     },
-    [openFileTab, closeGlobalSearch],
+    [openFileTab, closeModal],
   );
 
   const toggleFile = (filePath: string) => {
@@ -197,7 +197,7 @@ export function GlobalSearchModal() {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       e.preventDefault();
-      closeGlobalSearch();
+      closeModal();
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
       moveSelection(1);
@@ -220,7 +220,7 @@ export function GlobalSearchModal() {
       className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-start justify-center pt-[8vh]"
       onMouseDown={(e) => {
         // Click on backdrop (not modal) closes
-        if (e.target === e.currentTarget) closeGlobalSearch();
+        if (e.target === e.currentTarget) closeModal();
       }}
     >
       <motion.div
@@ -239,7 +239,7 @@ export function GlobalSearchModal() {
             Search in Files
           </div>
           <button
-            onClick={closeGlobalSearch}
+            onClick={closeModal}
             className="p-1 rounded hover:bg-white/[0.06] text-text-tertiary hover:text-text-primary transition-colors"
             title="Close (Esc)"
           >

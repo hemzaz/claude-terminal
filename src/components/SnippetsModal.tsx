@@ -17,7 +17,7 @@ interface Snippet {
 const DEFAULT_CATEGORIES = ['General', 'Prompts', 'Commands', 'Templates'];
 
 export function SnippetsModal() {
-  const { closeSnippetsModal } = useAppStore();
+  const { closeModal } = useAppStore();
   const { activeTerminalId, writeToTerminal } = useTerminalStore();
 
   const [snippets, setSnippets] = useState<Snippet[]>([]);
@@ -113,7 +113,7 @@ export function SnippetsModal() {
     if (!content || !activeTerminalId) return;
     await writeToTerminal(activeTerminalId, content);
     toast.success('Snippet Inserted', 'Content sent to terminal.');
-    closeSnippetsModal();
+    closeModal();
   };
 
   return (
@@ -123,7 +123,7 @@ export function SnippetsModal() {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
       className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
-      onDoubleClick={closeSnippetsModal}
+      onDoubleClick={closeModal}
     >
       <motion.div
         initial={{ opacity: 0 }}
@@ -140,7 +140,7 @@ export function SnippetsModal() {
             <h2 className="text-text-primary text-[14px] font-semibold">Snippets</h2>
           </div>
           <button
-            onClick={closeSnippetsModal}
+            onClick={closeModal}
             className="p-1 rounded hover:bg-white/[0.06] text-text-tertiary transition-colors"
           >
             <X size={16} />

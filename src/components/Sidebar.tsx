@@ -28,7 +28,7 @@ export function Sidebar() {
   const [draggingId, setDraggingId] = useState<string | null>(null);
 
   const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, updateLabel, updateNickname, unreadTerminalIds, gitInfoCache } = useTerminalStore();
-  const { sidebarCollapsed, toggleSidebarCollapse, openProfileModal, openNewTerminalModal, openWorkspaceModal, openWorktreeModal, openSessionHistory, openSnippetsModal, openClaudeConfig, openSessionTimeline, openMemoryEditor, addToGrid, removeFromGrid, gridTerminalIds, setGridMode, showFileTree, explorerHeightRatio, setExplorerHeightRatio, toolsCollapsed, toggleToolsCollapsed } = useAppStore();
+  const { sidebarCollapsed, toggleSidebarCollapse, openModal, addToGrid, removeFromGrid, gridTerminalIds, setGridMode, showFileTree, explorerHeightRatio, setExplorerHeightRatio, toolsCollapsed, toggleToolsCollapsed } = useAppStore();
 
   // Splitter between terminal list and Explorer. Measures the stack's bounding
   // rect during drag so the ratio is always computed relative to the sidebar's
@@ -84,7 +84,7 @@ export function Sidebar() {
   );
 
   const handleNewTerminal = () => {
-    openNewTerminalModal();
+    openModal('newTerminal');
   };
 
   const handleRename = async (id: string, newLabel: string) => {
@@ -135,10 +135,10 @@ export function Sidebar() {
           })}
         </div>
         <div className="h-px w-6 bg-[var(--ij-divider-soft)] my-2" />
-        <button onClick={() => openWorkspaceModal()} className="w-8 h-8 flex items-center justify-center rounded-[6px] hover:bg-white/[0.06] text-text-secondary hover:text-text-primary transition-colors" title="Workspaces"><FolderOpen size={14} strokeWidth={1.75} /></button>
-        <button onClick={() => openSnippetsModal()} className="w-8 h-8 flex items-center justify-center rounded-[6px] hover:bg-white/[0.06] text-text-secondary hover:text-text-primary transition-colors" title="Snippets"><FileText size={14} strokeWidth={1.75} /></button>
-        <button onClick={() => openSessionHistory()} className="w-8 h-8 flex items-center justify-center rounded-[6px] hover:bg-white/[0.06] text-text-secondary hover:text-text-primary transition-colors" title="Session History"><Clock size={14} strokeWidth={1.75} /></button>
-        <button onClick={() => openProfileModal()} className="w-8 h-8 flex items-center justify-center rounded-[6px] hover:bg-white/[0.06] text-text-secondary hover:text-text-primary transition-colors" title="Profiles"><Settings size={14} strokeWidth={1.75} /></button>
+        <button onClick={() => openModal('workspace')} className="w-8 h-8 flex items-center justify-center rounded-[6px] hover:bg-white/[0.06] text-text-secondary hover:text-text-primary transition-colors" title="Workspaces"><FolderOpen size={14} strokeWidth={1.75} /></button>
+        <button onClick={() => openModal('snippets')} className="w-8 h-8 flex items-center justify-center rounded-[6px] hover:bg-white/[0.06] text-text-secondary hover:text-text-primary transition-colors" title="Snippets"><FileText size={14} strokeWidth={1.75} /></button>
+        <button onClick={() => openModal('sessionHistory')} className="w-8 h-8 flex items-center justify-center rounded-[6px] hover:bg-white/[0.06] text-text-secondary hover:text-text-primary transition-colors" title="Session History"><Clock size={14} strokeWidth={1.75} /></button>
+        <button onClick={() => openModal('profile')} className="w-8 h-8 flex items-center justify-center rounded-[6px] hover:bg-white/[0.06] text-text-secondary hover:text-text-primary transition-colors" title="Profiles"><Settings size={14} strokeWidth={1.75} /></button>
         <button onClick={toggleSidebarCollapse} className="w-8 h-8 flex items-center justify-center rounded-[6px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors mt-1" title="Expand sidebar"><ChevronsRight size={14} strokeWidth={1.75} /></button>
       </div>
     );
@@ -404,7 +404,7 @@ export function Sidebar() {
                               const repoPath = gitInfo?.is_worktree
                                 ? gitInfo.main_repo_path || terminal.working_directory
                                 : terminal.working_directory;
-                              openWorktreeModal(repoPath);
+                              openModal('worktree', { repoPath });
                               setMenuOpenId(null);
                             }}
                             className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-white/[0.04]"
@@ -478,49 +478,49 @@ export function Sidebar() {
         {!toolsCollapsed && (
           <div className="p-1.5 pt-0 space-y-px">
             <button
-              onClick={() => openWorkspaceModal()}
+              onClick={() => openModal('workspace')}
               className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
             >
               <FolderOpen size={13} />
               Workspaces
             </button>
             <button
-              onClick={() => openSessionHistory()}
+              onClick={() => openModal('sessionHistory')}
               className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
             >
               <Clock size={13} />
               Session History
             </button>
             <button
-              onClick={() => openSnippetsModal()}
+              onClick={() => openModal('snippets')}
               className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
             >
               <FileText size={13} />
               Snippets
             </button>
             <button
-              onClick={() => openSessionTimeline()}
+              onClick={() => openModal('sessionTimeline')}
               className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
             >
               <Clock size={13} />
               Session Timeline
             </button>
             <button
-              onClick={() => openClaudeConfig()}
+              onClick={() => openModal('claudeConfig')}
               className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
             >
               <Settings size={13} />
               Claude Config
             </button>
             <button
-              onClick={() => openMemoryEditor()}
+              onClick={() => openModal('memoryEditor')}
               className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
             >
               <Brain size={13} />
               Memory Editor
             </button>
             <button
-              onClick={() => openProfileModal()}
+              onClick={() => openModal('profile')}
               className="w-full flex items-center justify-start gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 px-2 hover:bg-white/[0.05] rounded-[4px] transition-colors"
             >
               <UserCog size={13} />

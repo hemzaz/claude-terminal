@@ -32,7 +32,7 @@ const TAG_COLORS = [
 ];
 
 export function NewTerminalModal() {
-  const { closeNewTerminalModal, defaultClaudeArgs } = useAppStore();
+  const { closeModal, defaultClaudeArgs } = useAppStore();
   const { terminals, createTerminal } = useTerminalStore();
 
   const [profiles, setProfiles] = useState<ConfigProfile[]>([]);
@@ -272,7 +272,7 @@ export function NewTerminalModal() {
         });
       }
 
-      closeNewTerminalModal();
+      closeModal();
     } catch (err) {
       console.error('Failed to create terminal:', err);
       setError(String(err));
@@ -288,7 +288,7 @@ export function NewTerminalModal() {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
       className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
-      onDoubleClick={closeNewTerminalModal}
+      onDoubleClick={closeModal}
     >
       <motion.div
         initial={{ opacity: 0 }}
@@ -305,7 +305,7 @@ export function NewTerminalModal() {
             <h2 className="text-text-primary text-[14px] font-semibold">New Terminal</h2>
           </div>
           <button
-            onClick={closeNewTerminalModal}
+            onClick={closeModal}
             className="p-1 rounded hover:bg-white/[0.06] text-text-tertiary transition-colors"
           >
             <X size={16} />
@@ -616,7 +616,7 @@ export function NewTerminalModal() {
         {/* Footer */}
         <div className="flex justify-end gap-2 p-3 border-t border-border">
           <button
-            onClick={closeNewTerminalModal}
+            onClick={closeModal}
             className="px-4 h-9 text-text-secondary hover:text-text-primary hover:bg-white/[0.04] rounded-md text-[13px] transition-colors"
           >
             Cancel

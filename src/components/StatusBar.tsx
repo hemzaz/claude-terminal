@@ -41,7 +41,7 @@ export function StatusBar() {
     toggleGridMode,
     notifyOnFinish,
     setNotifyOnFinish,
-    openSettings,
+    openModal,
   } = useAppStore();
 
   const [appVersion, setAppVersion] = useState('');
@@ -147,7 +147,7 @@ export function StatusBar() {
         {/* Claude version */}
         {claudeVersion && (
           <button
-            onClick={openSettings}
+            onClick={() => openModal('settings')}
             className="flex items-center gap-1 h-[18px] px-1.5 rounded-[3px] text-text-tertiary hover:bg-white/[0.06] hover:text-text-secondary transition-colors"
             title="Open settings"
           >

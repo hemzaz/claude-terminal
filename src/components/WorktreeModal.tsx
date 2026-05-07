@@ -7,7 +7,7 @@ import { useTerminalStore } from '../store/terminalStore';
 import type { WorktreeInfo } from '../types/git';
 
 export function WorktreeModal() {
-  const { closeWorktreeModal, worktreeModalRepoPath, defaultClaudeArgs } = useAppStore();
+  const { closeModal, worktreeModalRepoPath, defaultClaudeArgs } = useAppStore();
   const { terminals, createTerminal } = useTerminalStore();
 
   const [worktrees, setWorktrees] = useState<WorktreeInfo[]>([]);
@@ -144,7 +144,7 @@ export function WorktreeModal() {
       const nickname = selected?.branch ? `${repoName} (${selected.branch})` : undefined;
 
       await createTerminal(label, selectedPath, defaultClaudeArgs, {}, colorTag, nickname);
-      closeWorktreeModal();
+      closeModal();
     } catch (err) {
       console.error('Failed to create terminal:', err);
     } finally {
@@ -161,7 +161,7 @@ export function WorktreeModal() {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
       className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
-      onDoubleClick={closeWorktreeModal}
+      onDoubleClick={closeModal}
     >
       <motion.div
         initial={{ opacity: 0 }}
@@ -181,7 +181,7 @@ export function WorktreeModal() {
             </h2>
           </div>
           <button
-            onClick={closeWorktreeModal}
+            onClick={closeModal}
             className="p-1 rounded hover:bg-white/[0.06] text-text-tertiary transition-colors"
           >
             <X size={16} />
