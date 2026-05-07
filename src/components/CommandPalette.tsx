@@ -41,6 +41,26 @@ interface Snippet {
   created_at: string;
 }
 
+interface ConfigProfile {
+  id: string;
+  name: string;
+  description: string | null;
+  working_directory: string;
+  claude_args: string[];
+  env_vars: Record<string, string>;
+  is_default: boolean;
+  last_used_at: string | null;
+}
+
+interface SessionHistoryEntry {
+  id: number;
+  terminal_id: string;
+  label: string;
+  started_at: string;
+  ended_at: string | null;
+  log_path: string | null;
+}
+
 interface PaletteItem {
   id: string;
   label: string;
@@ -81,12 +101,14 @@ function fuzzyMatch(text: string, query: string): { matches: boolean; score: num
 }
 
 export function CommandPalette() {
-  const { closeModal, replaceModal } = useAppStore();
+  const { closeModal, replaceModal, openFiles } = useAppStore();
   const { terminals, activeTerminalId, setActiveTerminal, writeToTerminal } = useTerminalStore();
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [hints, setHints] = useState<HintCategory[]>([]);
   const [snippets, setSnippets] = useState<Snippet[]>([]);
+  const [profiles, setProfiles] = useState<ConfigProfile[]>([]);
+  const [sessions, setSessions] = useState<SessionHistoryEntry[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -94,6 +116,8 @@ export function CommandPalette() {
     inputRef.current?.focus();
     invoke<HintCategory[]>('get_hints').then(setHints).catch(() => {});
     invoke<Snippet[]>('get_snippets').then(setSnippets).catch(() => {});
+    invoke<ConfigProfile[]>('get_profiles').then(setProfiles).catch(() => {});
+    invoke<SessionHistoryEntry[]>('get_session_history').then(setSessions).catch(() => {});
   }, []);
 
   // Determine prefix mode
@@ -219,8 +243,63 @@ export function CommandPalette() {
       });
     }
 
+    // Profiles
+    if (prefixMode === 'all' || prefixMode === 'commands') {
+      profiles.forEach((profile) => {
+        result.push({
+          id: `profile-${profile.id}`,
+          label: profile.name,
+          description: profile.description ?? profile.working_directory,
+          category: 'Profiles',
+          icon: User,
+          action: () => {
+            useTerminalStore.getState().createTerminal(
+              profile.name,
+              profile.working_directory,
+              profile.claude_args,
+              profile.env_vars,
+            );
+            closeModal();
+          },
+        });
+      });
+    }
+
+    // Sessions (most recent 15)
+    if (prefixMode === 'all' || prefixMode === 'commands') {
+      sessions.slice(0, 15).forEach((session) => {
+        const date = session.started_at.slice(0, 10);
+        result.push({
+          id: `session-${session.id}`,
+          label: session.label,
+          description: `${date} — ${session.ended_at ? 'ended' : 'running'}`,
+          category: 'Recent Sessions',
+          icon: History,
+          action: () => { replaceModal('sessionHistory'); },
+        });
+      });
+    }
+
+    // Open file tabs
+    if (prefixMode === 'all' || prefixMode === 'commands') {
+      openFiles.forEach((file) => {
+        const name = file.path.split('/').pop() ?? file.path;
+        result.push({
+          id: `file-${file.path}`,
+          label: name,
+          description: file.path,
+          category: 'Open Files',
+          icon: FileCode,
+          action: () => {
+            useAppStore.getState().setActiveFilePath(file.path);
+            closeModal();
+          },
+        });
+      });
+    }
+
     return result;
-  }, [terminals, hints, snippets, activeTerminalId, closeModal, replaceModal, setActiveTerminal, writeToTerminal, prefixMode]);
+  }, [terminals, hints, snippets, profiles, sessions, openFiles, activeTerminalId, closeModal, replaceModal, setActiveTerminal, writeToTerminal, prefixMode]);
 
   const filtered = useMemo(() => {
     if (!effectiveQuery) return items;

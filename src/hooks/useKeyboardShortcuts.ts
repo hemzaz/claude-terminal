@@ -118,7 +118,12 @@ export function useKeyboardShortcuts() {
 
       if (e.key === 'F1') {
         e.preventDefault();
-        useAppStore.getState().toggleHints();
+        const state = useAppStore.getState();
+        if (state.activeModal === 'commandPalette') {
+          state.closeModal();
+        } else {
+          state.openModal('commandPalette');
+        }
       }
 
       // Toggle Grid Mode: Ctrl+G
