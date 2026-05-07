@@ -18,6 +18,7 @@ interface ConfigProfile {
   claude_args: string[];
   env_vars: Record<string, string>;
   is_default: boolean;
+  last_used_at: string | null;
 }
 
 const TAG_COLORS = [
@@ -263,6 +264,13 @@ export function NewTerminalModal() {
         colorTag,
         nickname || undefined
       );
+
+      // Record recency so the profile floats to the top next time
+      if (selectedProfileId) {
+        invoke('update_profile_last_used', { id: selectedProfileId }).catch(() => {
+          // non-critical — ignore errors
+        });
+      }
 
       closeNewTerminalModal();
     } catch (err) {
