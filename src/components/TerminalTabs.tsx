@@ -1,7 +1,6 @@
 import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { Reorder } from 'framer-motion';
 import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight, Copy, File as FileIcon, AlertTriangle, Minimize2 } from 'lucide-react';
-import appIconUrl from '../assets/app-icon.png';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { TerminalView } from './TerminalView';
@@ -13,6 +12,7 @@ import { ScriptsMenu } from './ScriptsMenu';
 import { ScriptChildPane } from './ScriptChildPane';
 import { BottomTerminalPane } from './BottomTerminalPane';
 import { getDragData, isTerminalDrag } from '../utils/dragDrop';
+import { WelcomePanel } from './WelcomePanel';
 
 function fileBasename(p: string): string {
   const trimmed = p.replace(/[\\/]+$/, '');
@@ -527,49 +527,9 @@ export function TerminalTabs() {
           </div>
         )}
         {!activeTerminalId && !activeFilePath && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-text-secondary">
-              <img
-                src={appIconUrl}
-                alt=""
-                className="w-12 h-12 rounded-[8px] mb-5 select-none shadow-[0_2px_12px_rgba(0,0,0,0.35)]"
-                draggable={false}
-                style={{ imageRendering: 'pixelated' }}
-              />
-              <p className="text-[13px] text-text-primary font-medium mb-1">No active terminal</p>
-              <p className="text-[12px] text-text-tertiary mb-5 flex items-center">
-                <span className="mr-1.5">Press</span>
-                <kbd className="px-1.5 py-0.5 rounded bg-elevation-2 text-text-secondary text-[11px] font-sans border border-[var(--ij-divider-soft)]">
-                  {isMac ? '⌘' : 'Ctrl'}
-                </kbd>
-                <span className="mx-1 text-text-tertiary/60">+</span>
-                <kbd className="px-1.5 py-0.5 rounded bg-elevation-2 text-text-secondary text-[11px] font-sans border border-[var(--ij-divider-soft)]">
-                  {isMac ? '⇧' : 'Shift'}
-                </kbd>
-                <span className="mx-1 text-text-tertiary/60">+</span>
-                <kbd className="px-1.5 py-0.5 rounded bg-elevation-2 text-text-secondary text-[11px] font-sans border border-[var(--ij-divider-soft)]">
-                  N
-                </kbd>
-                <span className="ml-2">to start one</span>
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleNewTab}
-                  className="flex items-center gap-2 bg-accent-primary hover:bg-accent-secondary text-white h-8 px-4 rounded-[6px] text-[12.5px] font-medium transition-colors shadow-[0_1px_0_rgba(255,255,255,0.08)_inset]"
-                >
-                  <Plus size={14} strokeWidth={2.25} />
-                  New Terminal
-                </button>
-                {terminalList.length > 0 && (
-                  <button
-                    onClick={toggleGridMode}
-                    className="flex items-center gap-2 ring-1 ring-inset ring-[var(--ij-divider)] hover:bg-white/[0.05] text-text-primary h-8 px-4 rounded-[6px] text-[12.5px] font-medium transition-colors"
-                  >
-                    <Grid3X3 size={14} strokeWidth={1.75} />
-                    Grid View
-                  </button>
-                )}
-              </div>
-            </div>
+          <div className="absolute inset-0">
+            <WelcomePanel />
+          </div>
         )}
       </div>
 
