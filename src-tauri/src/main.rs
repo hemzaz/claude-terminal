@@ -5,6 +5,7 @@ mod terminal;
 mod config;
 mod database;
 mod telemetry;
+mod error_reporter;
 
 use tauri::Manager;
 use std::sync::Arc;
