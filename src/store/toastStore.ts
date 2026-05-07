@@ -8,6 +8,8 @@ export interface Toast {
   title: string;
   message?: string;
   duration: number;
+  /** Optional click handler — clicking the toast body calls this then auto-dismisses the toast. */
+  onClick?: () => void;
 }
 
 interface ToastState {
@@ -69,6 +71,6 @@ export const toast = {
     useToastStore.getState().addToast({ type: 'error', title, message, duration }),
   warning: (title: string, message?: string, duration?: number) =>
     useToastStore.getState().addToast({ type: 'warning', title, message, duration }),
-  info: (title: string, message?: string, duration?: number) =>
-    useToastStore.getState().addToast({ type: 'info', title, message, duration }),
+  info: (title: string, message?: string, duration?: number, onClick?: () => void) =>
+    useToastStore.getState().addToast({ type: 'info', title, message, duration, onClick }),
 };
