@@ -248,20 +248,29 @@ pub async fn save_profile(
     state: State<'_, AppState>,
     profile: ConfigProfile,
 ) -> Result<(), String> {
-    let db = state.db.lock().await;
-    db.save_profile(&profile)
+    wrap_cmd("save_profile", async move {
+        let db = state.db.lock().await;
+        db.save_profile(&profile)
+    })
+    .await
 }
 
 #[command]
 pub async fn get_profiles(state: State<'_, AppState>) -> Result<Vec<ConfigProfile>, String> {
-    let db = state.db.lock().await;
-    db.get_profiles()
+    wrap_cmd("get_profiles", async move {
+        let db = state.db.lock().await;
+        db.get_profiles()
+    })
+    .await
 }
 
 #[command]
 pub async fn delete_profile(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    let db = state.db.lock().await;
-    db.delete_profile(&id)
+    wrap_cmd("delete_profile", async move {
+        let db = state.db.lock().await;
+        db.delete_profile(&id)
+    })
+    .await
 }
 
 #[command]
@@ -522,8 +531,11 @@ pub async fn open_external_url(url: String) -> Result<(), String> {
 pub async fn get_workspaces(
     state: State<'_, AppState>,
 ) -> Result<Vec<crate::database::WorkspaceInfo>, String> {
-    let db = state.db.lock().await;
-    db.get_workspaces()
+    wrap_cmd("get_workspaces", async move {
+        let db = state.db.lock().await;
+        db.get_workspaces()
+    })
+    .await
 }
 
 #[command]
@@ -531,8 +543,11 @@ pub async fn delete_workspace(
     state: State<'_, AppState>,
     name: String,
 ) -> Result<(), String> {
-    let db = state.db.lock().await;
-    db.delete_workspace(&name)
+    wrap_cmd("delete_workspace", async move {
+        let db = state.db.lock().await;
+        db.delete_workspace(&name)
+    })
+    .await
 }
 
 #[command]
@@ -541,8 +556,11 @@ pub async fn save_workspace(
     name: String,
     terminals: Vec<crate::terminal::TerminalConfig>,
 ) -> Result<(), String> {
-    let db = state.db.lock().await;
-    db.save_workspace(&name, &terminals)
+    wrap_cmd("save_workspace", async move {
+        let db = state.db.lock().await;
+        db.save_workspace(&name, &terminals)
+    })
+    .await
 }
 
 #[command]
@@ -550,32 +568,44 @@ pub async fn load_workspace(
     state: State<'_, AppState>,
     name: String,
 ) -> Result<Vec<crate::terminal::TerminalConfig>, String> {
-    let db = state.db.lock().await;
-    db.load_workspace(&name)
+    wrap_cmd("load_workspace", async move {
+        let db = state.db.lock().await;
+        db.load_workspace(&name)
+    })
+    .await
 }
 
 #[command]
 pub async fn save_session_for_restore(state: State<'_, AppState>) -> Result<(), String> {
-    let configs = {
-        let terminals = state.terminals.lock().await;
-        terminals.get_all_configs()
-    };
-    let db = state.db.lock().await;
-    db.save_last_session(&configs)
+    wrap_cmd("save_session_for_restore", async move {
+        let configs = {
+            let terminals = state.terminals.lock().await;
+            terminals.get_all_configs()
+        };
+        let db = state.db.lock().await;
+        db.save_last_session(&configs)
+    })
+    .await
 }
 
 #[command]
 pub async fn get_last_session(
     state: State<'_, AppState>,
 ) -> Result<Option<Vec<crate::terminal::TerminalConfig>>, String> {
-    let db = state.db.lock().await;
-    db.load_last_session()
+    wrap_cmd("get_last_session", async move {
+        let db = state.db.lock().await;
+        db.load_last_session()
+    })
+    .await
 }
 
 #[command]
 pub async fn clear_last_session(state: State<'_, AppState>) -> Result<(), String> {
-    let db = state.db.lock().await;
-    db.clear_last_session()
+    wrap_cmd("clear_last_session", async move {
+        let db = state.db.lock().await;
+        db.clear_last_session()
+    })
+    .await
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1426,38 +1456,44 @@ pub async fn remove_worktree(
 pub async fn get_session_history(
     state: State<'_, AppState>,
 ) -> Result<Vec<SessionHistoryEntry>, String> {
-    let db = state.db.lock().await;
-    db.get_session_history()
+    wrap_cmd("get_session_history", async move {
+        let db = state.db.lock().await;
+        db.get_session_history()
+    })
+    .await
 }
 
 #[command]
 pub async fn read_log_file(path: String) -> Result<String, String> {
-    // Validate path is under the logs directory
-    let data_dir = directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
-        .ok_or("Failed to get project directories")?
-        .data_dir()
-        .to_path_buf();
-    let logs_dir = data_dir.join("logs");
-    let canonical_path = std::path::Path::new(&path)
-        .canonicalize()
-        .map_err(|e| format!("Invalid path: {}", e))?;
-    std::fs::create_dir_all(&logs_dir).map_err(|e| format!("Failed to create logs directory: {}", e))?;
-    let canonical_logs = logs_dir
-        .canonicalize()
-        .map_err(|e| format!("Failed to resolve logs directory: {}", e))?;
-    if !canonical_path.starts_with(&canonical_logs) {
-        return Err("Access denied: path is not under logs directory".to_string());
-    }
-    // Cap at 2 MB — prevents DoS via huge/symlinked logs and matches
-    // what the UI can reasonably render in a single read.
-    const MAX_LOG_BYTES: usize = 2 * 1024 * 1024;
-    let bytes = std::fs::read(&canonical_path).map_err(|e| format!("Failed to read log file: {}", e))?;
-    let slice = if bytes.len() > MAX_LOG_BYTES {
-        &bytes[bytes.len() - MAX_LOG_BYTES..]
-    } else {
-        &bytes[..]
-    };
-    Ok(String::from_utf8_lossy(slice).into_owned())
+    wrap_cmd("read_log_file", async move {
+        // Validate path is under the logs directory
+        let data_dir = directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
+            .ok_or("Failed to get project directories")?
+            .data_dir()
+            .to_path_buf();
+        let logs_dir = data_dir.join("logs");
+        let canonical_path = std::path::Path::new(&path)
+            .canonicalize()
+            .map_err(|e| format!("Invalid path: {}", e))?;
+        std::fs::create_dir_all(&logs_dir).map_err(|e| format!("Failed to create logs directory: {}", e))?;
+        let canonical_logs = logs_dir
+            .canonicalize()
+            .map_err(|e| format!("Failed to resolve logs directory: {}", e))?;
+        if !canonical_path.starts_with(&canonical_logs) {
+            return Err("Access denied: path is not under logs directory".to_string());
+        }
+        // Cap at 2 MB — prevents DoS via huge/symlinked logs and matches
+        // what the UI can reasonably render in a single read.
+        const MAX_LOG_BYTES: usize = 2 * 1024 * 1024;
+        let bytes = std::fs::read(&canonical_path).map_err(|e| format!("Failed to read log file: {}", e))?;
+        let slice = if bytes.len() > MAX_LOG_BYTES {
+            &bytes[bytes.len() - MAX_LOG_BYTES..]
+        } else {
+            &bytes[..]
+        };
+        Ok(String::from_utf8_lossy(slice).into_owned())
+    })
+    .await
 }
 
 #[command]
@@ -1466,24 +1502,27 @@ pub async fn delete_session_history(
     id: i64,
     log_path: Option<String>,
 ) -> Result<(), String> {
-    // Delete log file if it exists, but only if it's under the logs directory
-    if let Some(ref path) = log_path {
-        let data_dir = directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
-            .ok_or("Failed to get project directories")?
-            .data_dir()
-            .to_path_buf();
-        let logs_dir = data_dir.join("logs");
-        let _ = std::fs::create_dir_all(&logs_dir);
-        if let Ok(canonical_path) = std::path::Path::new(path).canonicalize() {
-            if let Ok(canonical_logs) = logs_dir.canonicalize() {
-                if canonical_path.starts_with(&canonical_logs) {
-                    let _ = std::fs::remove_file(&canonical_path);
+    wrap_cmd("delete_session_history", async move {
+        // Delete log file if it exists, but only if it's under the logs directory
+        if let Some(ref path) = log_path {
+            let data_dir = directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
+                .ok_or("Failed to get project directories")?
+                .data_dir()
+                .to_path_buf();
+            let logs_dir = data_dir.join("logs");
+            let _ = std::fs::create_dir_all(&logs_dir);
+            if let Ok(canonical_path) = std::path::Path::new(path).canonicalize() {
+                if let Ok(canonical_logs) = logs_dir.canonicalize() {
+                    if canonical_path.starts_with(&canonical_logs) {
+                        let _ = std::fs::remove_file(&canonical_path);
+                    }
                 }
             }
         }
-    }
-    let db = state.db.lock().await;
-    db.delete_session_history_entry(id)
+        let db = state.db.lock().await;
+        db.delete_session_history_entry(id)
+    })
+    .await
 }
 
 /// Retrieve the log content for a terminal from a previous session.
@@ -1494,49 +1533,52 @@ pub async fn get_session_log(
     state: State<'_, AppState>,
     terminal_id: String,
 ) -> Result<Option<String>, String> {
-    let log_path = {
-        let db = state.db.lock().await;
-        db.get_log_path_for_terminal(&terminal_id)?
-    };
+    wrap_cmd("get_session_log", async move {
+        let log_path = {
+            let db = state.db.lock().await;
+            db.get_log_path_for_terminal(&terminal_id)?
+        };
 
-    let path = match log_path {
-        Some(p) => p,
-        None => return Ok(None),
-    };
+        let path = match log_path {
+            Some(p) => p,
+            None => return Ok(None),
+        };
 
-    // Validate path is under the logs directory
-    let data_dir = directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
-        .ok_or("Failed to get project directories")?
-        .data_dir()
-        .to_path_buf();
-    let logs_dir = data_dir.join("logs");
-    std::fs::create_dir_all(&logs_dir)
-        .map_err(|e| format!("Failed to create logs directory: {}", e))?;
+        // Validate path is under the logs directory
+        let data_dir = directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
+            .ok_or("Failed to get project directories")?
+            .data_dir()
+            .to_path_buf();
+        let logs_dir = data_dir.join("logs");
+        std::fs::create_dir_all(&logs_dir)
+            .map_err(|e| format!("Failed to create logs directory: {}", e))?;
 
-    let canonical_path = match std::path::Path::new(&path).canonicalize() {
-        Ok(p) => p,
-        Err(_) => return Ok(None), // Log file may have been deleted
-    };
-    let canonical_logs = logs_dir
-        .canonicalize()
-        .map_err(|e| format!("Failed to resolve logs directory: {}", e))?;
-    if !canonical_path.starts_with(&canonical_logs) {
-        return Ok(None);
-    }
-
-    // Read up to 512 KB
-    match std::fs::read(&canonical_path) {
-        Ok(bytes) => {
-            let max_bytes = 512 * 1024;
-            let truncated = if bytes.len() > max_bytes {
-                &bytes[bytes.len() - max_bytes..]
-            } else {
-                &bytes
-            };
-            Ok(Some(String::from_utf8_lossy(truncated).into_owned()))
+        let canonical_path = match std::path::Path::new(&path).canonicalize() {
+            Ok(p) => p,
+            Err(_) => return Ok(None), // Log file may have been deleted
+        };
+        let canonical_logs = logs_dir
+            .canonicalize()
+            .map_err(|e| format!("Failed to resolve logs directory: {}", e))?;
+        if !canonical_path.starts_with(&canonical_logs) {
+            return Ok(None);
         }
-        Err(_) => Ok(None),
-    }
+
+        // Read up to 512 KB
+        match std::fs::read(&canonical_path) {
+            Ok(bytes) => {
+                let max_bytes = 512 * 1024;
+                let truncated = if bytes.len() > max_bytes {
+                    &bytes[bytes.len() - max_bytes..]
+                } else {
+                    &bytes
+                };
+                Ok(Some(String::from_utf8_lossy(truncated).into_owned()))
+            }
+            Err(_) => Ok(None),
+        }
+    })
+    .await
 }
 
 // Snippet commands
@@ -1821,8 +1863,11 @@ pub async fn save_session_summary(
     terminal_id: String,
     summary: String,
 ) -> Result<(), String> {
-    let db = state.db.lock().await;
-    db.save_session_summary(&terminal_id, &summary)
+    wrap_cmd("save_session_summary", async move {
+        let db = state.db.lock().await;
+        db.save_session_summary(&terminal_id, &summary)
+    })
+    .await
 }
 
 #[command]
@@ -1830,8 +1875,11 @@ pub async fn get_session_summary(
     state: State<'_, AppState>,
     terminal_id: String,
 ) -> Result<Option<String>, String> {
-    let db = state.db.lock().await;
-    db.get_session_summary(&terminal_id)
+    wrap_cmd("get_session_summary", async move {
+        let db = state.db.lock().await;
+        db.get_session_summary(&terminal_id)
+    })
+    .await
 }
 
 // Team tasks command
