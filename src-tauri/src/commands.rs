@@ -69,92 +69,95 @@ pub async fn create_terminal(
     state: State<'_, AppState>,
     request: CreateTerminalRequest,
 ) -> Result<crate::terminal::TerminalConfig, String> {
-    // Channel sized for burst output — Claude Code streaming can easily push
-    // hundreds of chunks/sec per terminal. 100 caused backpressure into the
-    // PTY reader thread under load.
-    let (tx, mut rx) = mpsc::channel::<(String, Vec<u8>)>(1000);
+    wrap_cmd("create_terminal", async move {
+        // Channel sized for burst output — Claude Code streaming can easily push
+        // hundreds of chunks/sec per terminal. 100 caused backpressure into the
+        // PTY reader thread under load.
+        let (tx, mut rx) = mpsc::channel::<(String, Vec<u8>)>(1000);
 
-    // Compute log file path
-    let log_path = {
-        let data_dir = directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
-            .ok_or("Failed to get project directories")?
-            .data_dir()
-            .to_path_buf();
-        let logs_dir = data_dir.join("logs");
-        std::fs::create_dir_all(&logs_dir).map_err(|e| e.to_string())?;
-        let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
-        let filename = format!("{}_{}.log", uuid::Uuid::new_v4(), timestamp);
-        logs_dir.join(filename).to_string_lossy().to_string()
-    };
+        // Compute log file path
+        let log_path = {
+            let data_dir = directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
+                .ok_or("Failed to get project directories")?
+                .data_dir()
+                .to_path_buf();
+            let logs_dir = data_dir.join("logs");
+            std::fs::create_dir_all(&logs_dir).map_err(|e| e.to_string())?;
+            let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+            let filename = format!("{}_{}.log", uuid::Uuid::new_v4(), timestamp);
+            logs_dir.join(filename).to_string_lossy().to_string()
+        };
 
-    let config = {
-        let mut terminals = state.terminals.lock().await;
-        terminals.create_terminal(
-            request.label.clone(),
-            request.working_directory,
-            request.claude_args,
-            request.env_vars,
-            request.color_tag,
-            request.nickname,
-            tx,
-            Some(log_path.clone()),
-        )?
-    };
+        let config = {
+            let mut terminals = state.terminals.lock().await;
+            terminals.create_terminal(
+                request.label.clone(),
+                request.working_directory,
+                request.claude_args,
+                request.env_vars,
+                request.color_tag,
+                request.nickname,
+                tx,
+                Some(log_path.clone()),
+            )?
+        };
 
-    // Insert session history entry
-    {
-        let db = state.db.lock().await;
-        if let Err(e) = db.insert_session_history(
-            &config.id,
-            &config.label,
-            &config.created_at.to_rfc3339(),
-            Some(&log_path),
-        ) {
-            eprintln!("Failed to insert session history: {}", e);
+        // Insert session history entry
+        {
+            let db = state.db.lock().await;
+            if let Err(e) = db.insert_session_history(
+                &config.id,
+                &config.label,
+                &config.created_at.to_rfc3339(),
+                Some(&log_path),
+            ) {
+                eprintln!("Failed to insert session history: {}", e);
+            }
         }
-    }
 
-    let terminal_id = config.id.clone();
-    let db_arc = state.db.clone();
-    let terminals_arc = state.terminals.clone();
+        let terminal_id = config.id.clone();
+        let db_arc = state.db.clone();
+        let terminals_arc = state.terminals.clone();
 
-    let app_clone = app.clone();
-    tokio::spawn(async move {
-        while let Some((id, data)) = rx.recv().await {
-            if let Err(e) = app_clone.emit("terminal-output", serde_json::json!({
-                "id": id,
-                "data": data,
+        let app_clone = app.clone();
+        tokio::spawn(async move {
+            while let Some((id, data)) = rx.recv().await {
+                if let Err(e) = app_clone.emit("terminal-output", serde_json::json!({
+                    "id": id,
+                    "data": data,
+                })) {
+                    eprintln!("Failed to emit terminal-output: {}", e);
+                    break;
+                }
+            }
+
+            // Terminal process exited — update status, session history, and notify frontend
+            // Note: the terminal may have already been removed by close_terminal(), so ignore errors
+            {
+                if let Ok(mut manager) = tokio::time::timeout(
+                    std::time::Duration::from_secs(2),
+                    terminals_arc.lock(),
+                ).await {
+                    let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
+                }
+            }
+            {
+                let db = db_arc.lock().await;
+                if let Err(e) = db.update_session_ended(&terminal_id, &chrono::Utc::now().to_rfc3339()) {
+                    eprintln!("Failed to update session ended for {}: {}", terminal_id, e);
+                }
+            }
+
+            if let Err(e) = app_clone.emit("terminal-finished", serde_json::json!({
+                "id": terminal_id,
             })) {
-                eprintln!("Failed to emit terminal-output: {}", e);
-                break;
+                eprintln!("Failed to emit terminal-finished: {}", e);
             }
-        }
+        });
 
-        // Terminal process exited — update status, session history, and notify frontend
-        // Note: the terminal may have already been removed by close_terminal(), so ignore errors
-        {
-            if let Ok(mut manager) = tokio::time::timeout(
-                std::time::Duration::from_secs(2),
-                terminals_arc.lock(),
-            ).await {
-                let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
-            }
-        }
-        {
-            let db = db_arc.lock().await;
-            if let Err(e) = db.update_session_ended(&terminal_id, &chrono::Utc::now().to_rfc3339()) {
-                eprintln!("Failed to update session ended for {}: {}", terminal_id, e);
-            }
-        }
-
-        if let Err(e) = app_clone.emit("terminal-finished", serde_json::json!({
-            "id": terminal_id,
-        })) {
-            eprintln!("Failed to emit terminal-finished: {}", e);
-        }
-    });
-
-    Ok(config)
+        Ok(config)
+    })
+    .await
 }
 
 /// Maximum size for a single write to terminal (64 KB)
@@ -166,15 +169,18 @@ pub async fn write_to_terminal(
     id: String,
     data: Vec<u8>,
 ) -> Result<(), String> {
-    if data.len() > MAX_TERMINAL_WRITE_SIZE {
-        return Err(format!(
-            "Write payload too large ({} bytes). Maximum is {} bytes.",
-            data.len(),
-            MAX_TERMINAL_WRITE_SIZE
-        ));
-    }
-    let mut terminals = state.terminals.lock().await;
-    terminals.write(&id, &data)
+    wrap_cmd("write_to_terminal", async move {
+        if data.len() > MAX_TERMINAL_WRITE_SIZE {
+            return Err(format!(
+                "Write payload too large ({} bytes). Maximum is {} bytes.",
+                data.len(),
+                MAX_TERMINAL_WRITE_SIZE
+            ));
+        }
+        let mut terminals = state.terminals.lock().await;
+        terminals.write(&id, &data)
+    })
+    .await
 }
 
 #[command]
@@ -184,22 +190,31 @@ pub async fn resize_terminal(
     cols: u16,
     rows: u16,
 ) -> Result<(), String> {
-    let mut terminals = state.terminals.lock().await;
-    terminals.resize(&id, cols, rows)
+    wrap_cmd("resize_terminal", async move {
+        let mut terminals = state.terminals.lock().await;
+        terminals.resize(&id, cols, rows)
+    })
+    .await
 }
 
 #[command]
 pub async fn close_terminal(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    let mut terminals = state.terminals.lock().await;
-    terminals.close(&id)
+    wrap_cmd("close_terminal", async move {
+        let mut terminals = state.terminals.lock().await;
+        terminals.close(&id)
+    })
+    .await
 }
 
 #[command]
 pub async fn get_terminals(
     state: State<'_, AppState>,
 ) -> Result<Vec<crate::terminal::TerminalConfig>, String> {
-    let terminals = state.terminals.lock().await;
-    Ok(terminals.get_all_configs())
+    wrap_cmd("get_terminals", async move {
+        let terminals = state.terminals.lock().await;
+        Ok(terminals.get_all_configs())
+    })
+    .await
 }
 
 #[command]
@@ -208,8 +223,11 @@ pub async fn update_terminal_label(
     id: String,
     label: String,
 ) -> Result<(), String> {
-    let mut terminals = state.terminals.lock().await;
-    terminals.update_label(&id, label)
+    wrap_cmd("update_terminal_label", async move {
+        let mut terminals = state.terminals.lock().await;
+        terminals.update_label(&id, label)
+    })
+    .await
 }
 
 #[command]
@@ -218,8 +236,11 @@ pub async fn update_terminal_nickname(
     id: String,
     nickname: String,
 ) -> Result<(), String> {
-    let mut terminals = state.terminals.lock().await;
-    terminals.update_nickname(&id, nickname)
+    wrap_cmd("update_terminal_nickname", async move {
+        let mut terminals = state.terminals.lock().await;
+        terminals.update_nickname(&id, nickname)
+    })
+    .await
 }
 
 #[command]
@@ -579,112 +600,115 @@ pub async fn get_terminal_changes(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<FileChangesResult, String> {
-    let working_directory = {
-        let terminals = state.terminals.lock().await;
-        let configs = terminals.get_all_configs();
-        configs
-            .into_iter()
-            .find(|c| c.id == id)
-            .map(|c| c.working_directory.clone())
-            .ok_or_else(|| "Terminal not found".to_string())?
-    };
+    wrap_cmd("get_terminal_changes", async move {
+        let working_directory = {
+            let terminals = state.terminals.lock().await;
+            let configs = terminals.get_all_configs();
+            configs
+                .into_iter()
+                .find(|c| c.id == id)
+                .map(|c| c.working_directory.clone())
+                .ok_or_else(|| "Terminal not found".to_string())?
+        };
 
-    // Check if it's a git repo and get branch name
-    let branch_output = shell_command("git", &["rev-parse", "--abbrev-ref", "HEAD"])
-        .current_dir(&working_directory)
-        .output();
+        // Check if it's a git repo and get branch name
+        let branch_output = shell_command("git", &["rev-parse", "--abbrev-ref", "HEAD"])
+            .current_dir(&working_directory)
+            .output();
 
-    let (is_git_repo, branch) = match branch_output {
-        Ok(output) if output.status.success() => {
-            let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            (true, Some(branch))
+        let (is_git_repo, branch) = match branch_output {
+            Ok(output) if output.status.success() => {
+                let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                (true, Some(branch))
+            }
+            _ => (false, None),
+        };
+
+        if !is_git_repo {
+            return Ok(FileChangesResult {
+                terminal_id: id,
+                working_directory,
+                changes: vec![],
+                is_git_repo: false,
+                branch: None,
+                error: None,
+            });
         }
-        _ => (false, None),
-    };
 
-    if !is_git_repo {
-        return Ok(FileChangesResult {
+        // Get changed files
+        let status_output = shell_command("git", &["status", "--porcelain"])
+            .current_dir(&working_directory)
+            .output()
+            .map_err(|e| format!("Failed to run git status: {}", e))?;
+
+        if !status_output.status.success() {
+            return Ok(FileChangesResult {
+                terminal_id: id,
+                working_directory,
+                changes: vec![],
+                is_git_repo: true,
+                branch,
+                error: Some(String::from_utf8_lossy(&status_output.stderr).trim().to_string()),
+            });
+        }
+
+        let stdout = String::from_utf8_lossy(&status_output.stdout);
+        let mut changes: Vec<FileChange> = Vec::new();
+        for line in stdout.lines() {
+            if line.len() < 3 { continue; }
+            let x = line.as_bytes().get(0).copied().unwrap_or(b' ') as char;
+            let y = line.as_bytes().get(1).copied().unwrap_or(b' ') as char;
+            // Rename line: "R  old -> new"
+            let raw_path = &line[3..];
+            let path = if raw_path.contains(" -> ") {
+                raw_path.split(" -> ").nth(1).unwrap_or(raw_path).to_string()
+            } else {
+                raw_path.to_string()
+            };
+
+            if x == '?' && y == '?' {
+                // Untracked — always unstaged
+                changes.push(FileChange { path, status: "untracked".into(), staged: false });
+                continue;
+            }
+
+            let map_code = |c: char| match c {
+                'A' => "new",
+                'M' => "modified",
+                'D' => "deleted",
+                'R' => "renamed",
+                'C' => "new",
+                'U' => "modified", // conflicted — treat as modified
+                'T' => "modified", // type change
+                _ => "",
+            };
+
+            // Staged side (X)
+            if x != ' ' && x != '?' {
+                let status = map_code(x);
+                if !status.is_empty() {
+                    changes.push(FileChange { path: path.clone(), status: status.into(), staged: true });
+                }
+            }
+            // Unstaged side (Y)
+            if y != ' ' && y != '?' {
+                let status = map_code(y);
+                if !status.is_empty() {
+                    changes.push(FileChange { path, status: status.into(), staged: false });
+                }
+            }
+        }
+
+        Ok(FileChangesResult {
             terminal_id: id,
             working_directory,
-            changes: vec![],
-            is_git_repo: false,
-            branch: None,
-            error: None,
-        });
-    }
-
-    // Get changed files
-    let status_output = shell_command("git", &["status", "--porcelain"])
-        .current_dir(&working_directory)
-        .output()
-        .map_err(|e| format!("Failed to run git status: {}", e))?;
-
-    if !status_output.status.success() {
-        return Ok(FileChangesResult {
-            terminal_id: id,
-            working_directory,
-            changes: vec![],
+            changes,
             is_git_repo: true,
             branch,
-            error: Some(String::from_utf8_lossy(&status_output.stderr).trim().to_string()),
-        });
-    }
-
-    let stdout = String::from_utf8_lossy(&status_output.stdout);
-    let mut changes: Vec<FileChange> = Vec::new();
-    for line in stdout.lines() {
-        if line.len() < 3 { continue; }
-        let x = line.as_bytes().get(0).copied().unwrap_or(b' ') as char;
-        let y = line.as_bytes().get(1).copied().unwrap_or(b' ') as char;
-        // Rename line: "R  old -> new"
-        let raw_path = &line[3..];
-        let path = if raw_path.contains(" -> ") {
-            raw_path.split(" -> ").nth(1).unwrap_or(raw_path).to_string()
-        } else {
-            raw_path.to_string()
-        };
-
-        if x == '?' && y == '?' {
-            // Untracked — always unstaged
-            changes.push(FileChange { path, status: "untracked".into(), staged: false });
-            continue;
-        }
-
-        let map_code = |c: char| match c {
-            'A' => "new",
-            'M' => "modified",
-            'D' => "deleted",
-            'R' => "renamed",
-            'C' => "new",
-            'U' => "modified", // conflicted — treat as modified
-            'T' => "modified", // type change
-            _ => "",
-        };
-
-        // Staged side (X)
-        if x != ' ' && x != '?' {
-            let status = map_code(x);
-            if !status.is_empty() {
-                changes.push(FileChange { path: path.clone(), status: status.into(), staged: true });
-            }
-        }
-        // Unstaged side (Y)
-        if y != ' ' && y != '?' {
-            let status = map_code(y);
-            if !status.is_empty() {
-                changes.push(FileChange { path, status: status.into(), staged: false });
-            }
-        }
-    }
-
-    Ok(FileChangesResult {
-        terminal_id: id,
-        working_directory,
-        changes,
-        is_git_repo: true,
-        branch,
-        error: None,
+            error: None,
+        })
     })
+    .await
 }
 
 // ─── File Diff Command ──────────────────────────────────────────────────────
@@ -2718,45 +2742,48 @@ pub async fn create_script_terminal(
     cwd: String,
     script_name: String,
 ) -> Result<crate::terminal::TerminalConfig, String> {
-    validate_path_is_trusted(&state, &cwd).await?;
+    wrap_cmd("create_script_terminal", async move {
+        validate_path_is_trusted(&state, &cwd).await?;
 
-    let (tx, mut rx) = mpsc::channel::<(String, Vec<u8>)>(1000);
+        let (tx, mut rx) = mpsc::channel::<(String, Vec<u8>)>(1000);
 
-    let config = {
-        let mut terminals = state.terminals.lock().await;
-        terminals.create_script_terminal(
-            format!("npm run {}", script_name),
-            cwd,
-            script_name,
-            tx,
-        )?
-    };
+        let config = {
+            let mut terminals = state.terminals.lock().await;
+            terminals.create_script_terminal(
+                format!("npm run {}", script_name),
+                cwd,
+                script_name,
+                tx,
+            )?
+        };
 
-    let terminal_id = config.id.clone();
-    let terminals_arc = state.terminals.clone();
-    let app_clone = app.clone();
-    tokio::spawn(async move {
-        while let Some((id, data)) = rx.recv().await {
-            if let Err(e) = app_clone.emit("terminal-output", serde_json::json!({
-                "id": id,
-                "data": data,
-            })) {
-                eprintln!("Failed to emit terminal-output: {}", e);
-                break;
+        let terminal_id = config.id.clone();
+        let terminals_arc = state.terminals.clone();
+        let app_clone = app.clone();
+        tokio::spawn(async move {
+            while let Some((id, data)) = rx.recv().await {
+                if let Err(e) = app_clone.emit("terminal-output", serde_json::json!({
+                    "id": id,
+                    "data": data,
+                })) {
+                    eprintln!("Failed to emit terminal-output: {}", e);
+                    break;
+                }
             }
-        }
-        if let Ok(mut manager) = tokio::time::timeout(
-            std::time::Duration::from_secs(2),
-            terminals_arc.lock(),
-        ).await {
-            let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
-        }
-        if let Err(e) = app_clone.emit("terminal-finished", serde_json::json!({ "id": terminal_id })) {
-            eprintln!("Failed to emit terminal-finished: {}", e);
-        }
-    });
+            if let Ok(mut manager) = tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                terminals_arc.lock(),
+            ).await {
+                let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
+            }
+            if let Err(e) = app_clone.emit("terminal-finished", serde_json::json!({ "id": terminal_id })) {
+                eprintln!("Failed to emit terminal-finished: {}", e);
+            }
+        });
 
-    Ok(config)
+        Ok(config)
+    })
+    .await
 }
 
 /// Spawn an interactive shell terminal at `cwd`. No claude. The terminal
@@ -2769,40 +2796,43 @@ pub async fn create_shell_terminal(
     label: String,
     cwd: String,
 ) -> Result<crate::terminal::TerminalConfig, String> {
-    validate_path_is_trusted(&state, &cwd).await?;
+    wrap_cmd("create_shell_terminal", async move {
+        validate_path_is_trusted(&state, &cwd).await?;
 
-    let (tx, mut rx) = mpsc::channel::<(String, Vec<u8>)>(1000);
+        let (tx, mut rx) = mpsc::channel::<(String, Vec<u8>)>(1000);
 
-    let config = {
-        let mut terminals = state.terminals.lock().await;
-        terminals.create_shell_terminal(label, cwd, tx)?
-    };
+        let config = {
+            let mut terminals = state.terminals.lock().await;
+            terminals.create_shell_terminal(label, cwd, tx)?
+        };
 
-    let terminal_id = config.id.clone();
-    let terminals_arc = state.terminals.clone();
-    let app_clone = app.clone();
-    tokio::spawn(async move {
-        while let Some((id, data)) = rx.recv().await {
-            if let Err(e) = app_clone.emit("terminal-output", serde_json::json!({
-                "id": id,
-                "data": data,
-            })) {
-                eprintln!("Failed to emit terminal-output: {}", e);
-                break;
+        let terminal_id = config.id.clone();
+        let terminals_arc = state.terminals.clone();
+        let app_clone = app.clone();
+        tokio::spawn(async move {
+            while let Some((id, data)) = rx.recv().await {
+                if let Err(e) = app_clone.emit("terminal-output", serde_json::json!({
+                    "id": id,
+                    "data": data,
+                })) {
+                    eprintln!("Failed to emit terminal-output: {}", e);
+                    break;
+                }
             }
-        }
-        if let Ok(mut manager) = tokio::time::timeout(
-            std::time::Duration::from_secs(2),
-            terminals_arc.lock(),
-        ).await {
-            let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
-        }
-        if let Err(e) = app_clone.emit("terminal-finished", serde_json::json!({ "id": terminal_id })) {
-            eprintln!("Failed to emit terminal-finished: {}", e);
-        }
-    });
+            if let Ok(mut manager) = tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                terminals_arc.lock(),
+            ).await {
+                let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
+            }
+            if let Err(e) = app_clone.emit("terminal-finished", serde_json::json!({ "id": terminal_id })) {
+                eprintln!("Failed to emit terminal-finished: {}", e);
+            }
+        });
 
-    Ok(config)
+        Ok(config)
+    })
+    .await
 }
 
 /// Return the HEAD version of a file as a string. Used by the diff editor to
