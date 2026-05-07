@@ -2,9 +2,20 @@
 
 ## Project Overview
 
-**ClaudeTerminal** is a Windows desktop application for managing multiple Claude Code CLI terminal instances from a unified interface. Built with Tauri 2.x (Rust backend) and React 18 (TypeScript frontend), it provides tabbed and grid views of parallel Claude Code sessions with PTY-based terminal emulation.
+**ClaudeTerminal** is a desktop application (Windows + macOS Apple Silicon) for managing multiple Claude Code CLI terminal instances from a unified interface. Built with Tauri 2.x (Rust backend) and React 18 (TypeScript frontend), it provides tabbed and grid views of parallel Claude Code sessions with PTY-based terminal emulation.
+
+**Distribution:**
+- **Windows:** `.msi` / `.exe` from GitHub Releases. In-app auto-updater is the primary update channel.
+- **macOS:** `.dmg` from GitHub Releases or via the Homebrew tap (URL-form, since this repo isn't named `homebrew-*`):
+  ```bash
+  brew tap hemzaz/claude-terminal https://github.com/hemzaz/claude-terminal
+  brew install --cask hemzaz/claude-terminal/claude-terminal
+  ```
+  The Cask file lives at `Casks/claude-terminal.rb` in this repo and is regenerated on every release by `.github/workflows/release.yml` (job `update-homebrew-cask`). It points at the versioned `ClaudeTerminal_<version>_aarch64.dmg`, installs the `.app` to `/Applications`, and a `postflight` block runs `xattr -cr` to strip the Gatekeeper quarantine attribute. App is **not notarized** (no Apple Developer ID). The macOS update channel is user-selectable in Settings → App Updates → Update source (default: Homebrew, alternative: in-app updater).
 
 Current version: **1.20.8**
+
+For the full architecture map (modules, IPC surface, DB schema, data flows, gotchas), see [docs/CODEBASE_MAP.md](docs/CODEBASE_MAP.md).
 
 ## Tech Stack
 
@@ -102,7 +113,8 @@ Key Tauri commands exposed to the frontend:
 
 - Node.js v18+
 - Rust (latest stable via rustup)
-- Visual Studio Build Tools (Windows)
+- **Windows:** Visual Studio Build Tools
+- **macOS:** Xcode Command Line Tools (`xcode-select --install`) and `rustup target add aarch64-apple-darwin`
 
 ### Commands
 

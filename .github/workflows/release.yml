@@ -52,11 +52,10 @@ jobs:
             ### Installation
             Download the appropriate installer for your platform:
             - **Windows**: `.msi` or `.exe` (NSIS installer)
-            - **macOS (Apple Silicon)**: `.dmg`
-            - **macOS (Intel)**: `.dmg`
+            - **macOS (Apple Silicon)**: `.dmg` — preferred install via Homebrew tap (see README)
 
             ### Auto-Update
-            Existing users will be notified of this update automatically.
+            Windows users are notified in-app. macOS users update via `brew upgrade --cask claude-terminal`.
 
   build-tauri:
     needs: create-release
@@ -70,8 +69,6 @@ jobs:
             args: ''
           - platform: macos-latest
             args: '--target aarch64-apple-darwin'
-          - platform: macos-latest
-            args: '--target x86_64-apple-darwin'
 
     runs-on: ${{ matrix.platform }}
     # Lifted to job-level so step `if:` conditions can read it (step env isn't available there).
@@ -91,7 +88,7 @@ jobs:
         uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # master
         with:
           toolchain: stable
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin' || '' }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
@@ -159,9 +156,80 @@ jobs:
               draft: false
             });
 
-      - name: Trigger website rebuild
-        uses: peter-evans/repository-dispatch@v3
+  update-homebrew-cask:
+    needs: [create-release, publish-release]
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout master
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          token: ${{ secrets.WEBSITE_DISPATCH_TOKEN }}
-          repository: talayash/claude-terminal-website
-          event-type: new-release
+          ref: master
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute DMG sha256
+        id: sha
+        run: |
+          VERSION="${{ needs.create-release.outputs.version }}"
+          # Tauri 2 macOS dmg name: ClaudeTerminal_${VERSION}_aarch64.dmg
+          URL="https://github.com/hemzaz/claude-terminal/releases/download/v${VERSION}/ClaudeTerminal_${VERSION}_aarch64.dmg"
+          for i in 1 2 3 4 5; do
+            if curl -fsSL "$URL" -o app.dmg; then break; fi
+            echo "Asset not yet available, retry $i/5..."
+            sleep 15
+          done
+          test -s app.dmg || { echo "::error::Could not download $URL"; exit 1; }
+          SHA="$(sha256sum app.dmg | cut -d' ' -f1)"
+          echo "sha256=${SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Write Casks/claude-terminal.rb and push
+        env:
+          VERSION: ${{ needs.create-release.outputs.version }}
+          SHA: ${{ steps.sha.outputs.sha256 }}
+        run: |
+          mkdir -p Casks
+          cat > Casks/claude-terminal.rb <<'RUBY_EOF'
+          cask "claude-terminal" do
+            version "__VERSION__"
+            sha256 "__SHA__"
+
+            url "https://github.com/hemzaz/claude-terminal/releases/download/v#{version}/ClaudeTerminal_#{version}_aarch64.dmg"
+            name "ClaudeTerminal"
+            desc "Multi-instance Claude Code terminal manager"
+            homepage "https://github.com/hemzaz/claude-terminal"
+
+            depends_on macos: ">= :big_sur"
+            depends_on arch: :arm64
+
+            app "ClaudeTerminal.app"
+
+            postflight do
+              # App is not notarized — strip the quarantine attribute so
+              # Gatekeeper doesn't block first launch.
+              system_command "/usr/bin/xattr",
+                             args: ["-cr", "#{appdir}/ClaudeTerminal.app"],
+                             sudo: false
+            end
+
+            zap trash: [
+              "~/Library/Application Support/com.claudeterminal.ClaudeTerminal",
+              "~/Library/Caches/com.claudeterminal.ClaudeTerminal",
+              "~/Library/Preferences/com.claudeterminal.desktop.plist",
+            ]
+          end
+          RUBY_EOF
+          sed -i "s/__VERSION__/${VERSION}/" Casks/claude-terminal.rb
+          sed -i "s/__SHA__/${SHA}/" Casks/claude-terminal.rb
+
+          git config user.email "actions@github.com"
+          git config user.name "github-actions[bot]"
+          git add Casks/claude-terminal.rb
+          if git diff --cached --quiet; then
+            echo "Cask already up to date for v${VERSION}"
+            exit 0
+          fi
+          # Skip the release.yml tag trigger by committing with [skip ci];
+          # the tag is already pushed and we only want the commit on master.
+          git commit -m "chore(cask): claude-terminal ${VERSION} [skip ci]"
+          git push origin master

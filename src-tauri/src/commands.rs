@@ -506,10 +506,29 @@ pub async fn install_claude_code() -> Result<String, String> {
             .map_err(|e| e.to_string())?;
 
         if output.status.success() {
-            Ok("Claude Code installed successfully!".to_string())
-        } else {
-            Err(String::from_utf8_lossy(&output.stderr).to_string())
+            return Ok("Claude Code installed successfully!".to_string());
         }
+
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+        // On macOS (and Linux), a system-wide Node from nodejs.org installs npm
+        // with a root-owned global prefix, so `npm i -g` hits EACCES. Surface a
+        // clear remediation rather than dumping the raw npm error.
+        if !cfg!(target_os = "windows")
+            && (stderr.contains("EACCES") || stderr.contains("permission denied"))
+        {
+            return Err(
+                "npm requires root access to install global packages with this Node setup.\n\n\
+                 Recommended fixes (pick one):\n\
+                 • Install Node via Homebrew: brew install node\n\
+                 • Install Node via nvm: https://github.com/nvm-sh/nvm\n\
+                 • Or run this in Terminal: sudo npm install -g @anthropic-ai/claude-code\n\n\
+                 Then click Recheck."
+                    .to_string(),
+            );
+        }
+
+        Err(stderr)
     })
     .await
 }
