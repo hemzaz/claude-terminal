@@ -17,6 +17,25 @@ pub struct AppState {
 }
 
 fn main() {
+    std::panic::set_hook(Box::new(|info| {
+        let msg = info
+            .payload()
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "unknown panic".into());
+        let kind = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()));
+        let backtrace = std::backtrace::Backtrace::force_capture().to_string();
+        error_reporter::report_blocking(
+            error_reporter::ErrorSource::RustPanic,
+            kind,
+            msg,
+            Some(backtrace),
+        );
+    }));
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
@@ -26,6 +45,10 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let db = database::Database::new()?;
+            let installation_id = db.get_or_create_installation_id().unwrap_or_default();
+            let app_version = app.package_info().version.to_string();
+            error_reporter::init(installation_id, app_version);
+
             let terminal_manager = terminal::TerminalManager::new();
 
             app.manage(AppState {
