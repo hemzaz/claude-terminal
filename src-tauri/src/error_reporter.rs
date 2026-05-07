@@ -59,6 +59,25 @@ use std::sync::OnceLock;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
+use serde::Serialize;
+
+const WORKER_URL: &str = "https://ct-analytics.claude-terminal.workers.dev";
+const INGEST_TOKEN: Option<&str> = option_env!("CT_INGEST_TOKEN");
+const SEND_TIMEOUT: Duration = Duration::from_secs(5);
+const MESSAGE_MAX: usize = 2048;
+const STACK_MAX: usize = 8192;
+
+#[derive(Serialize)]
+struct ErrorReportPayload<'a> {
+    installation_id: &'a str,
+    app_version: &'a str,
+    os: &'a str,
+    source: &'static str,
+    kind: Option<&'a str>,
+    message: &'a str,
+    stack: Option<&'a str>,
+    fingerprint: &'a str,
+}
 
 const DEDUP_WINDOW: Duration = Duration::from_secs(60);
 
@@ -111,6 +130,86 @@ pub fn set_enabled(enabled: bool) {
 
 pub fn is_enabled() -> bool {
     ENABLED.load(Ordering::Relaxed)
+}
+
+pub async fn report(
+    source: ErrorSource,
+    kind: Option<String>,
+    message: String,
+    stack: Option<String>,
+) {
+    if !is_enabled() {
+        return;
+    }
+    let token = match INGEST_TOKEN {
+        Some(t) if !t.is_empty() => t,
+        _ => return,
+    };
+    let state = match REPORTER.get() {
+        Some(s) => s,
+        None => {
+            eprintln!("[error_reporter] report() called before init(); skipping");
+            return;
+        }
+    };
+
+    let scrubbed_message = clamp(scrub(&message), MESSAGE_MAX);
+    let scrubbed_stack = stack.map(|s| clamp(scrub(&s), STACK_MAX));
+    let fp = fingerprint(source, kind.as_deref(), &scrubbed_message, scrubbed_stack.as_deref());
+
+    if !state.dedup.should_send(&fp, Instant::now()) {
+        return;
+    }
+
+    let payload = ErrorReportPayload {
+        installation_id: &state.installation_id,
+        app_version: &state.app_version,
+        os: std::env::consts::OS,
+        source: source.as_tag(),
+        kind: kind.as_deref(),
+        message: &scrubbed_message,
+        stack: scrubbed_stack.as_deref(),
+        fingerprint: &fp,
+    };
+
+    let client = match reqwest::Client::builder().timeout(SEND_TIMEOUT).build() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[error_reporter] http client build failed: {}", e);
+            return;
+        }
+    };
+
+    match client
+        .post(format!("{}/error_report", WORKER_URL))
+        .header("x-ct-token", token)
+        .json(&payload)
+        .send()
+        .await
+    {
+        Ok(resp) => {
+            if !resp.status().is_success() {
+                eprintln!("[error_reporter] worker responded {}", resp.status());
+            }
+        }
+        Err(e) => {
+            eprintln!("[error_reporter] send failed: {}", e);
+        }
+    }
+}
+
+fn clamp(s: String, max: usize) -> String {
+    if s.len() <= max {
+        return s;
+    }
+    // Find the largest valid char boundary <= max.
+    let mut cut = max;
+    while cut > 0 && !s.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    let mut out = s;
+    out.truncate(cut);
+    out
 }
 
 #[cfg(test)]
