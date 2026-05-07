@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { Reorder } from 'framer-motion';
-import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight, Copy, File as FileIcon } from 'lucide-react';
+import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight, Copy, File as FileIcon, AlertTriangle, Minimize2 } from 'lucide-react';
 import appIconUrl from '../assets/app-icon.png';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
@@ -23,7 +23,7 @@ function fileBasename(p: string): string {
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
 export function TerminalTabs() {
-  const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, unreadTerminalIds, gitInfoCache, reorderTerminals, scriptChildren, closeScript } = useTerminalStore();
+  const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, unreadTerminalIds, gitInfoCache, reorderTerminals, scriptChildren, closeScript, writeToTerminal } = useTerminalStore();
   const { openModal, gridMode, toggleGridMode, addToGrid, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, setSplitTerminals, setSplitMode, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree } = useAppStore();
 
   // Selecting a terminal clears the file-tab focus (so terminal view shows),
@@ -211,6 +211,7 @@ export function TerminalTabs() {
               const model = instance?.model;
               const isWorktree = instance?.isWorktree;
               const loopInfo = instance?.loopInfo;
+              const contextFraction = instance?.contextUsageFraction ?? null;
 
               return (
               <Reorder.Item
@@ -242,6 +243,20 @@ export function TerminalTabs() {
                   {((activeTerminalId === terminal.id && !activeFilePath) || splitDropTargetId === terminal.id) && (
                     <span className="absolute left-2 right-2 bottom-0 h-[2px] rounded-t bg-accent-primary" />
                   )}
+                  {/* Context window usage bar — fills left-to-right as context fills */}
+                  {contextFraction !== null && contextFraction > 0.01 && (
+                    <span
+                      className={`absolute top-0 left-0 h-[2px] transition-[width] duration-700 ${
+                        contextFraction >= 0.9
+                          ? 'bg-red-500'
+                          : contextFraction >= 0.8
+                            ? 'bg-amber-400'
+                            : 'bg-blue-500/70'
+                      }`}
+                      style={{ width: `${Math.min(contextFraction * 100, 100)}%` }}
+                      title={`Context: ${Math.round(contextFraction * 100)}% used`}
+                    />
+                  )}
                   {splitDropTargetId === terminal.id && (
                     <SplitSquareHorizontal size={12} className="text-accent-primary flex-shrink-0 animate-pulse" />
                   )}
@@ -268,6 +283,18 @@ export function TerminalTabs() {
                   {loopInfo && (
                     <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse flex-shrink-0" title={`Loop: ${loopInfo.interval}`} />
                   )}
+                  {/* Context warning badge — visible at ≥80% */}
+                  {contextFraction !== null && contextFraction >= 0.8 && (
+                    <span
+                      className="flex-shrink-0"
+                      title={`Context ${Math.round(contextFraction * 100)}% — ${contextFraction >= 0.9 ? 'run /compact now' : 'consider /compact soon'}`}
+                    >
+                      <AlertTriangle
+                        size={11}
+                        className={contextFraction >= 0.9 ? 'text-red-400 animate-pulse' : 'text-amber-400'}
+                      />
+                    </span>
+                  )}
                   <span className="max-w-[120px] truncate">{terminal.nickname || terminal.label}</span>
                   {gitInfoCache.get(terminal.id)?.current_branch && (
                     <span className={`text-[11px] font-mono max-w-[60px] truncate ${
@@ -277,6 +304,21 @@ export function TerminalTabs() {
                     </span>
                   )}
                   <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {/* /compact shortcut — always visible when context ≥ 90% */}
+                    {contextFraction !== null && contextFraction >= 0.9 && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          focusTerminal(terminal.id);
+                          void writeToTerminal(terminal.id, '/compact\n');
+                        }}
+                        className="flex items-center gap-0.5 px-1 h-5 rounded bg-red-500/20 hover:bg-red-500/35 text-red-400 text-[9px] font-medium transition-colors opacity-100"
+                        title="Run /compact to free context window"
+                      >
+                        <Minimize2 size={9} />
+                        compact
+                      </button>
+                    )}
                     {activeTerminalId && terminal.id !== activeTerminalId && (
                       <button
                         onClick={(e) => {
