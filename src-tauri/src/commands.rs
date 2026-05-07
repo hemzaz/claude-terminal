@@ -1866,8 +1866,11 @@ pub async fn delete_claude_command(name: String) -> Result<(), String> {
 
 #[command]
 pub async fn get_installation_id(state: State<'_, AppState>) -> Result<String, String> {
-    let db = state.db.lock().await;
-    db.get_or_create_installation_id()
+    wrap_cmd("get_installation_id", async move {
+        let db = state.db.lock().await;
+        db.get_or_create_installation_id()
+    })
+    .await
 }
 
 #[command]
@@ -1876,93 +1879,99 @@ pub async fn send_telemetry_heartbeat(
     enabled: bool,
     app_version: String,
 ) -> Result<(), String> {
-    if !enabled {
-        return Ok(());
-    }
-    let installation_id = {
-        let db = state.db.lock().await;
-        db.get_or_create_installation_id()?
-    };
-    tokio::spawn(crate::telemetry::send_heartbeat(installation_id, app_version));
-    Ok(())
+    wrap_cmd("send_telemetry_heartbeat", async move {
+        if !enabled {
+            return Ok(());
+        }
+        let installation_id = {
+            let db = state.db.lock().await;
+            db.get_or_create_installation_id()?
+        };
+        tokio::spawn(crate::telemetry::send_heartbeat(installation_id, app_version));
+        Ok(())
+    })
+    .await
 }
 
 // Session summary commands
 
 #[command]
 pub async fn summarize_session(log_path: String) -> Result<Option<String>, String> {
-    // Validate path is under the logs directory
-    let data_dir = directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
-        .ok_or("Failed to get project directories")?
-        .data_dir()
-        .to_path_buf();
-    let logs_dir = data_dir.join("logs");
-    std::fs::create_dir_all(&logs_dir).map_err(|e| format!("Failed to create logs directory: {}", e))?;
+    wrap_cmd("summarize_session", async move {
+        // Validate path is under the logs directory
+        let data_dir = directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
+            .ok_or("Failed to get project directories")?
+            .data_dir()
+            .to_path_buf();
+        let logs_dir = data_dir.join("logs");
+        std::fs::create_dir_all(&logs_dir).map_err(|e| format!("Failed to create logs directory: {}", e))?;
 
-    let canonical_path = match std::path::Path::new(&log_path).canonicalize() {
-        Ok(p) => p,
-        Err(_) => return Ok(None),
-    };
-    let canonical_logs = logs_dir
-        .canonicalize()
-        .map_err(|e| format!("Failed to resolve logs directory: {}", e))?;
-    if !canonical_path.starts_with(&canonical_logs) {
-        return Err("Access denied: path is not under logs directory".to_string());
-    }
+        let canonical_path = match std::path::Path::new(&log_path).canonicalize() {
+            Ok(p) => p,
+            Err(_) => return Ok(None),
+        };
+        let canonical_logs = logs_dir
+            .canonicalize()
+            .map_err(|e| format!("Failed to resolve logs directory: {}", e))?;
+        if !canonical_path.starts_with(&canonical_logs) {
+            return Err("Access denied: path is not under logs directory".to_string());
+        }
 
-    // Read log file content (capped at 100KB)
-    let bytes = match std::fs::read(&canonical_path) {
-        Ok(b) => b,
-        Err(_) => return Ok(None),
-    };
-    let max_bytes = 100 * 1024;
-    let truncated = if bytes.len() > max_bytes {
-        &bytes[bytes.len() - max_bytes..]
-    } else {
-        &bytes
-    };
-    let log_content = String::from_utf8_lossy(truncated);
+        // Read log file content (capped at 100KB)
+        let bytes = match std::fs::read(&canonical_path) {
+            Ok(b) => b,
+            Err(_) => return Ok(None),
+        };
+        let max_bytes = 100 * 1024;
+        let truncated = if bytes.len() > max_bytes {
+            &bytes[bytes.len() - max_bytes..]
+        } else {
+            &bytes
+        };
+        let log_content = String::from_utf8_lossy(truncated);
 
-    // Strip ANSI escape sequences
-    let ansi_re = regex::Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\x1b\[.*?[A-Za-z]")
-        .unwrap();
-    let clean_content = ansi_re.replace_all(&log_content, "").to_string();
+        // Strip ANSI escape sequences
+        let ansi_re = regex::Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\x1b\[.*?[A-Za-z]")
+            .unwrap();
+        let clean_content = ansi_re.replace_all(&log_content, "").to_string();
 
-    if clean_content.trim().is_empty() {
-        return Ok(None);
-    }
+        if clean_content.trim().is_empty() {
+            return Ok(None);
+        }
 
-    // Run claude -p to summarize
-    let mut cmd = shell_command("claude", &["-p", "--model", "haiku", "Summarize what was accomplished in this terminal session in 2-3 bullet points. Be concise."]);
-    cmd.stdin(std::process::Stdio::piped());
-    cmd.stdout(std::process::Stdio::piped());
-    cmd.stderr(std::process::Stdio::piped());
+        // Run claude -p to summarize
+        let mut cmd = shell_command("claude", &["-p", "--model", "haiku", "Summarize what was accomplished in this terminal session in 2-3 bullet points. Be concise."]);
+        cmd.stdin(std::process::Stdio::piped());
+        cmd.stdout(std::process::Stdio::piped());
+        cmd.stderr(std::process::Stdio::piped());
 
-    let mut child = match cmd.spawn() {
-        Ok(c) => c,
-        Err(_) => return Ok(None), // Claude Code not available
-    };
+        let mut child = match cmd.spawn() {
+            Ok(c) => c,
+            Err(_) => return Ok(None), // Claude Code not available
+        };
 
-    if let Some(mut stdin) = child.stdin.take() {
-        use std::io::Write;
-        let _ = stdin.write_all(clean_content.as_bytes());
-    }
+        if let Some(mut stdin) = child.stdin.take() {
+            use std::io::Write;
+            let _ = stdin.write_all(clean_content.as_bytes());
+        }
 
-    let output = match child.wait_with_output() {
-        Ok(o) => o,
-        Err(_) => return Ok(None),
-    };
+        let output = match child.wait_with_output() {
+            Ok(o) => o,
+            Err(_) => return Ok(None),
+        };
 
-    if !output.status.success() {
-        return Ok(None);
-    }
+        if !output.status.success() {
+            return Ok(None);
+        }
 
-    let summary = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if summary.is_empty() {
-        return Ok(None);
-    }
+        let summary = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if summary.is_empty() {
+            return Ok(None);
+        }
 
-    Ok(Some(summary))
+        Ok(Some(summary))
+    })
+    .await
 }
 
 #[command]
@@ -2005,77 +2014,80 @@ pub struct TaskInfo {
 
 #[command]
 pub async fn get_team_tasks(team_name: String) -> Result<Vec<TaskInfo>, String> {
-    // Validate team_name doesn't contain path traversal
-    if team_name.contains('/') || team_name.contains('\\') || team_name.contains("..") || team_name.contains('\0') {
-        return Err("Invalid team name".to_string());
-    }
-
-    let home = if cfg!(target_os = "windows") {
-        std::env::var("USERPROFILE").map_err(|_| "USERPROFILE not set".to_string())?
-    } else {
-        std::env::var("HOME").map_err(|_| "HOME not set".to_string())?
-    };
-
-    let tasks_dir = std::path::Path::new(&home)
-        .join(".claude")
-        .join("tasks")
-        .join(&team_name);
-
-    if !tasks_dir.exists() {
-        return Ok(vec![]);
-    }
-
-    let entries = std::fs::read_dir(&tasks_dir).map_err(|e| e.to_string())?;
-    let mut tasks = Vec::new();
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
+    wrap_cmd("get_team_tasks", async move {
+        // Validate team_name doesn't contain path traversal
+        if team_name.contains('/') || team_name.contains('\\') || team_name.contains("..") || team_name.contains('\0') {
+            return Err("Invalid team name".to_string());
         }
 
-        // Skip .highwatermark and non-JSON files
-        let name = entry.file_name().to_string_lossy().to_string();
-        if name.starts_with('.') || !name.ends_with(".json") {
-            continue;
-        }
-
-        let content = match std::fs::read_to_string(&path) {
-            Ok(c) => c,
-            Err(_) => continue,
+        let home = if cfg!(target_os = "windows") {
+            std::env::var("USERPROFILE").map_err(|_| "USERPROFILE not set".to_string())?
+        } else {
+            std::env::var("HOME").map_err(|_| "HOME not set".to_string())?
         };
 
-        let val: serde_json::Value = match serde_json::from_str(&content) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
+        let tasks_dir = std::path::Path::new(&home)
+            .join(".claude")
+            .join("tasks")
+            .join(&team_name);
 
-        let id = val.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let subject = val.get("subject").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let status = val.get("status").and_then(|v| v.as_str()).unwrap_or("pending").to_string();
-        let owner = val.get("owner").and_then(|v| v.as_str()).map(String::from);
-        let active_form = val.get("activeForm").and_then(|v| v.as_str()).map(String::from);
-        let blocked_by: Vec<String> = val.get("blockedBy")
-            .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-            .unwrap_or_default();
-
-        if !id.is_empty() {
-            tasks.push(TaskInfo {
-                id,
-                subject,
-                status,
-                owner,
-                blocked_by,
-                active_form,
-            });
+        if !tasks_dir.exists() {
+            return Ok(vec![]);
         }
-    }
 
-    // Sort by id
-    tasks.sort_by(|a, b| a.id.cmp(&b.id));
+        let entries = std::fs::read_dir(&tasks_dir).map_err(|e| e.to_string())?;
+        let mut tasks = Vec::new();
 
-    Ok(tasks)
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+
+            // Skip .highwatermark and non-JSON files
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') || !name.ends_with(".json") {
+                continue;
+            }
+
+            let content = match std::fs::read_to_string(&path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+
+            let val: serde_json::Value = match serde_json::from_str(&content) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+
+            let id = val.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let subject = val.get("subject").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let status = val.get("status").and_then(|v| v.as_str()).unwrap_or("pending").to_string();
+            let owner = val.get("owner").and_then(|v| v.as_str()).map(String::from);
+            let active_form = val.get("activeForm").and_then(|v| v.as_str()).map(String::from);
+            let blocked_by: Vec<String> = val.get("blockedBy")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .unwrap_or_default();
+
+            if !id.is_empty() {
+                tasks.push(TaskInfo {
+                    id,
+                    subject,
+                    status,
+                    owner,
+                    blocked_by,
+                    active_form,
+                });
+            }
+        }
+
+        // Sort by id
+        tasks.sort_by(|a, b| a.id.cmp(&b.id));
+
+        Ok(tasks)
+    })
+    .await
 }
 
 // Memory & CLAUDE.md commands
@@ -2159,117 +2171,129 @@ fn validate_claude_path(path: &str) -> Result<(), String> {
 
 #[command]
 pub async fn list_memory_files(project_path: Option<String>) -> Result<Vec<MemoryFileInfo>, String> {
-    let claude_dir = get_claude_dir()?;
-    let projects_dir = claude_dir.join("projects");
+    wrap_cmd("list_memory_files", async move {
+        let claude_dir = get_claude_dir()?;
+        let projects_dir = claude_dir.join("projects");
 
-    if !projects_dir.exists() {
-        return Ok(vec![]);
-    }
-
-    let mut files = Vec::new();
-
-    let scan_project = |project_dir: &std::path::Path, files: &mut Vec<MemoryFileInfo>| {
-        let memory_dir = project_dir.join("memory");
-        if !memory_dir.exists() || !memory_dir.is_dir() {
-            return;
+        if !projects_dir.exists() {
+            return Ok(vec![]);
         }
-        let project_name = project_dir
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string();
 
-        if let Ok(entries) = std::fs::read_dir(&memory_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_file() {
-                    let name = entry.file_name().to_string_lossy().to_string();
-                    let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
-                    files.push(MemoryFileInfo {
-                        path: path.to_string_lossy().to_string(),
-                        name,
-                        project: project_name.clone(),
-                        size,
-                    });
-                }
+        let mut files = Vec::new();
+
+        let scan_project = |project_dir: &std::path::Path, files: &mut Vec<MemoryFileInfo>| {
+            let memory_dir = project_dir.join("memory");
+            if !memory_dir.exists() || !memory_dir.is_dir() {
+                return;
             }
-        }
-    };
+            let project_name = project_dir
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
 
-    if let Some(ref specific_project) = project_path {
-        // Scan only the specific project
-        let target = std::path::Path::new(specific_project);
-        if target.exists() && target.is_dir() {
-            scan_project(target, &mut files);
-        }
-    } else {
-        // Scan all projects
-        if let Ok(entries) = std::fs::read_dir(&projects_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    scan_project(&path, &mut files);
-                }
-            }
-        }
-    }
-
-    Ok(files)
-}
-
-#[command]
-pub async fn read_memory_file(path: String) -> Result<String, String> {
-    validate_claude_path(&path)?;
-    std::fs::read_to_string(&path).map_err(|e| format!("Failed to read memory file: {}", e))
-}
-
-#[command]
-pub async fn write_memory_file(path: String, content: String) -> Result<(), String> {
-    validate_claude_path(&path)?;
-    // Ensure parent directory exists
-    if let Some(parent) = std::path::Path::new(&path).parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    std::fs::write(&path, &content).map_err(|e| format!("Failed to write memory file: {}", e))
-}
-
-#[command]
-pub async fn list_claude_md_files() -> Result<Vec<ClaudeMdInfo>, String> {
-    let mut files = Vec::new();
-    let claude_dir = get_claude_dir()?;
-
-    // Global ~/.claude/CLAUDE.md
-    let global_md = claude_dir.join("CLAUDE.md");
-    if global_md.exists() {
-        files.push(ClaudeMdInfo {
-            path: global_md.to_string_lossy().to_string(),
-            scope: "global".to_string(),
-            project_name: None,
-        });
-    }
-
-    // Project-level CLAUDE.md files in ~/.claude/projects/*/
-    let projects_dir = claude_dir.join("projects");
-    if projects_dir.exists() {
-        if let Ok(entries) = std::fs::read_dir(&projects_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    let md_path = path.join("CLAUDE.md");
-                    if md_path.exists() {
-                        let project_name = entry.file_name().to_string_lossy().to_string();
-                        files.push(ClaudeMdInfo {
-                            path: md_path.to_string_lossy().to_string(),
-                            scope: "project".to_string(),
-                            project_name: Some(project_name),
+            if let Ok(entries) = std::fs::read_dir(&memory_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_file() {
+                        let name = entry.file_name().to_string_lossy().to_string();
+                        let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                        files.push(MemoryFileInfo {
+                            path: path.to_string_lossy().to_string(),
+                            name,
+                            project: project_name.clone(),
+                            size,
                         });
                     }
                 }
             }
-        }
-    }
+        };
 
-    Ok(files)
+        if let Some(ref specific_project) = project_path {
+            // Scan only the specific project
+            let target = std::path::Path::new(specific_project);
+            if target.exists() && target.is_dir() {
+                scan_project(target, &mut files);
+            }
+        } else {
+            // Scan all projects
+            if let Ok(entries) = std::fs::read_dir(&projects_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        scan_project(&path, &mut files);
+                    }
+                }
+            }
+        }
+
+        Ok(files)
+    })
+    .await
+}
+
+#[command]
+pub async fn read_memory_file(path: String) -> Result<String, String> {
+    wrap_cmd("read_memory_file", async move {
+        validate_claude_path(&path)?;
+        std::fs::read_to_string(&path).map_err(|e| format!("Failed to read memory file: {}", e))
+    })
+    .await
+}
+
+#[command]
+pub async fn write_memory_file(path: String, content: String) -> Result<(), String> {
+    wrap_cmd("write_memory_file", async move {
+        validate_claude_path(&path)?;
+        // Ensure parent directory exists
+        if let Some(parent) = std::path::Path::new(&path).parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        std::fs::write(&path, &content).map_err(|e| format!("Failed to write memory file: {}", e))
+    })
+    .await
+}
+
+#[command]
+pub async fn list_claude_md_files() -> Result<Vec<ClaudeMdInfo>, String> {
+    wrap_cmd("list_claude_md_files", async move {
+        let mut files = Vec::new();
+        let claude_dir = get_claude_dir()?;
+
+        // Global ~/.claude/CLAUDE.md
+        let global_md = claude_dir.join("CLAUDE.md");
+        if global_md.exists() {
+            files.push(ClaudeMdInfo {
+                path: global_md.to_string_lossy().to_string(),
+                scope: "global".to_string(),
+                project_name: None,
+            });
+        }
+
+        // Project-level CLAUDE.md files in ~/.claude/projects/*/
+        let projects_dir = claude_dir.join("projects");
+        if projects_dir.exists() {
+            if let Ok(entries) = std::fs::read_dir(&projects_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        let md_path = path.join("CLAUDE.md");
+                        if md_path.exists() {
+                            let project_name = entry.file_name().to_string_lossy().to_string();
+                            files.push(ClaudeMdInfo {
+                                path: md_path.to_string_lossy().to_string(),
+                                scope: "project".to_string(),
+                                project_name: Some(project_name),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(files)
+    })
+    .await
 }
 
 // Agent Teams (multi-agent orchestration)
@@ -2305,61 +2329,64 @@ pub struct TeamInfo {
 
 #[command]
 pub async fn get_active_teams() -> Result<Vec<TeamInfo>, String> {
-    let home = if cfg!(target_os = "windows") {
-        std::env::var("USERPROFILE").map_err(|_| "USERPROFILE not set".to_string())?
-    } else {
-        std::env::var("HOME").map_err(|_| "HOME not set".to_string())?
-    };
-
-    let teams_dir = std::path::Path::new(&home).join(".claude").join("teams");
-    if !teams_dir.exists() {
-        return Ok(vec![]);
-    }
-
-    let entries = std::fs::read_dir(&teams_dir).map_err(|e| e.to_string())?;
-    let mut teams = Vec::new();
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-
-        let config_path = path.join("config.json");
-        if !config_path.exists() {
-            continue;
-        }
-
-        let config_str = match std::fs::read_to_string(&config_path) {
-            Ok(s) => s,
-            Err(_) => continue,
+    wrap_cmd("get_active_teams", async move {
+        let home = if cfg!(target_os = "windows") {
+            std::env::var("USERPROFILE").map_err(|_| "USERPROFILE not set".to_string())?
+        } else {
+            std::env::var("HOME").map_err(|_| "HOME not set".to_string())?
         };
 
-        let config: TeamConfig = match serde_json::from_str(&config_str) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
+        let teams_dir = std::path::Path::new(&home).join(".claude").join("teams");
+        if !teams_dir.exists() {
+            return Ok(vec![]);
+        }
 
-        let dir_name = entry.file_name().to_string_lossy().to_string();
+        let entries = std::fs::read_dir(&teams_dir).map_err(|e| e.to_string())?;
+        let mut teams = Vec::new();
 
-        // Read task count from .highwatermark
-        let tasks_dir = std::path::Path::new(&home)
-            .join(".claude")
-            .join("tasks")
-            .join(&dir_name);
-        let hwm_path = tasks_dir.join(".highwatermark");
-        let task_count = std::fs::read_to_string(&hwm_path)
-            .ok()
-            .and_then(|s| s.trim().parse::<u32>().ok());
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
 
-        teams.push(TeamInfo {
-            dir_name,
-            config,
-            task_count,
-        });
-    }
+            let config_path = path.join("config.json");
+            if !config_path.exists() {
+                continue;
+            }
 
-    Ok(teams)
+            let config_str = match std::fs::read_to_string(&config_path) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+
+            let config: TeamConfig = match serde_json::from_str(&config_str) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+
+            let dir_name = entry.file_name().to_string_lossy().to_string();
+
+            // Read task count from .highwatermark
+            let tasks_dir = std::path::Path::new(&home)
+                .join(".claude")
+                .join("tasks")
+                .join(&dir_name);
+            let hwm_path = tasks_dir.join(".highwatermark");
+            let task_count = std::fs::read_to_string(&hwm_path)
+                .ok()
+                .and_then(|s| s.trim().parse::<u32>().ok());
+
+            teams.push(TeamInfo {
+                dir_name,
+                config,
+                task_count,
+            });
+        }
+
+        Ok(teams)
+    })
+    .await
 }
 
 // ─── Git repo scan (sidebar Git panel) ────────────────────────────────────
@@ -2497,15 +2524,18 @@ pub async fn scan_git_repos(
     state: State<'_, AppState>,
     root_path: String,
 ) -> Result<Vec<ScannedGitRepo>, String> {
-    validate_path_is_trusted(&state, &root_path).await?;
-    let root = std::path::Path::new(&root_path)
-        .canonicalize()
-        .map_err(|e| format!("Invalid path: {}", e))?;
-    let mut results = Vec::new();
-    // max_depth 4 handles common monorepo layouts (apps/x, packages/y/z)
-    // limit 40 guards against runaway scans
-    scan_for_repos(&root, &root, 0, 4, &mut results, 40);
-    Ok(results)
+    wrap_cmd("scan_git_repos", async move {
+        validate_path_is_trusted(&state, &root_path).await?;
+        let root = std::path::Path::new(&root_path)
+            .canonicalize()
+            .map_err(|e| format!("Invalid path: {}", e))?;
+        let mut results = Vec::new();
+        // max_depth 4 handles common monorepo layouts (apps/x, packages/y/z)
+        // limit 40 guards against runaway scans
+        scan_for_repos(&root, &root, 0, 4, &mut results, 40);
+        Ok(results)
+    })
+    .await
 }
 
 // ─── Path-based variants for operating on nested / selected repos ───────────
@@ -2881,29 +2911,32 @@ pub async fn list_package_scripts(
     state: State<'_, AppState>,
     cwd: String,
 ) -> Result<Vec<PackageScript>, String> {
-    validate_path_is_trusted(&state, &cwd).await?;
+    wrap_cmd("list_package_scripts", async move {
+        validate_path_is_trusted(&state, &cwd).await?;
 
-    let pkg_path = std::path::Path::new(&cwd).join("package.json");
-    let bytes = match std::fs::read(&pkg_path) {
-        Ok(b) => b,
-        Err(_) => return Ok(vec![]), // no package.json → no scripts, not an error
-    };
-    let json: serde_json::Value = serde_json::from_slice(&bytes)
-        .map_err(|e| format!("Invalid package.json: {}", e))?;
-    let scripts = match json.get("scripts").and_then(|v| v.as_object()) {
-        Some(m) => m,
-        None => return Ok(vec![]),
-    };
-    let result: Vec<PackageScript> = scripts
-        .iter()
-        .filter_map(|(name, val)| {
-            val.as_str().map(|command| PackageScript {
-                name: name.clone(),
-                command: command.to_string(),
+        let pkg_path = std::path::Path::new(&cwd).join("package.json");
+        let bytes = match std::fs::read(&pkg_path) {
+            Ok(b) => b,
+            Err(_) => return Ok(vec![]), // no package.json → no scripts, not an error
+        };
+        let json: serde_json::Value = serde_json::from_slice(&bytes)
+            .map_err(|e| format!("Invalid package.json: {}", e))?;
+        let scripts = match json.get("scripts").and_then(|v| v.as_object()) {
+            Some(m) => m,
+            None => return Ok(vec![]),
+        };
+        let result: Vec<PackageScript> = scripts
+            .iter()
+            .filter_map(|(name, val)| {
+                val.as_str().map(|command| PackageScript {
+                    name: name.clone(),
+                    command: command.to_string(),
+                })
             })
-        })
-        .collect();
-    Ok(result)
+            .collect();
+        Ok(result)
+    })
+    .await
 }
 
 /// Spawn a child terminal that runs `npm run <script>` in the given cwd.
@@ -3118,34 +3151,37 @@ pub async fn list_directory(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<Vec<DirEntryInfo>, String> {
-    validate_path_is_trusted(&state, &path).await?;
+    wrap_cmd("list_directory", async move {
+        validate_path_is_trusted(&state, &path).await?;
 
-    let mut entries: Vec<DirEntryInfo> = Vec::new();
-    let read_dir = std::fs::read_dir(&path).map_err(|e| format!("Failed to read directory: {}", e))?;
-    for entry in read_dir.flatten() {
-        let meta = match entry.metadata() {
-            Ok(m) => m,
-            Err(_) => continue,
-        };
-        let file_name = entry.file_name().to_string_lossy().to_string();
-        let full_path = entry.path().to_string_lossy().to_string();
-        entries.push(DirEntryInfo {
-            name: file_name,
-            path: full_path,
-            is_dir: meta.is_dir(),
-            is_symlink: meta.file_type().is_symlink(),
-            size: if meta.is_file() { meta.len() } else { 0 },
+        let mut entries: Vec<DirEntryInfo> = Vec::new();
+        let read_dir = std::fs::read_dir(&path).map_err(|e| format!("Failed to read directory: {}", e))?;
+        for entry in read_dir.flatten() {
+            let meta = match entry.metadata() {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            let file_name = entry.file_name().to_string_lossy().to_string();
+            let full_path = entry.path().to_string_lossy().to_string();
+            entries.push(DirEntryInfo {
+                name: file_name,
+                path: full_path,
+                is_dir: meta.is_dir(),
+                is_symlink: meta.file_type().is_symlink(),
+                size: if meta.is_file() { meta.len() } else { 0 },
+            });
+        }
+
+        // VS Code ordering: folders first, then files, each alphabetical (case-insensitive).
+        entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
         });
-    }
 
-    // VS Code ordering: folders first, then files, each alphabetical (case-insensitive).
-    entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
-        (true, false) => std::cmp::Ordering::Less,
-        (false, true) => std::cmp::Ordering::Greater,
-        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-    });
-
-    Ok(entries)
+        Ok(entries)
+    })
+    .await
 }
 
 /// Read a file as UTF-8 text. Refuses binary files and very large files so the
@@ -3155,28 +3191,31 @@ pub async fn read_text_file(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<String, String> {
-    validate_path_is_trusted(&state, &path).await?;
+    wrap_cmd("read_text_file", async move {
+        validate_path_is_trusted(&state, &path).await?;
 
-    let meta = std::fs::metadata(&path).map_err(|e| format!("Failed to stat file: {}", e))?;
-    if meta.is_dir() {
-        return Err("Path is a directory".to_string());
-    }
-    const MAX_BYTES: u64 = 5 * 1024 * 1024; // 5 MB
-    if meta.len() > MAX_BYTES {
-        return Err(format!(
-            "File is too large to edit in-app ({} bytes, max {}).",
-            meta.len(),
-            MAX_BYTES
-        ));
-    }
+        let meta = std::fs::metadata(&path).map_err(|e| format!("Failed to stat file: {}", e))?;
+        if meta.is_dir() {
+            return Err("Path is a directory".to_string());
+        }
+        const MAX_BYTES: u64 = 5 * 1024 * 1024; // 5 MB
+        if meta.len() > MAX_BYTES {
+            return Err(format!(
+                "File is too large to edit in-app ({} bytes, max {}).",
+                meta.len(),
+                MAX_BYTES
+            ));
+        }
 
-    let bytes = std::fs::read(&path).map_err(|e| format!("Failed to read file: {}", e))?;
-    // Quick binary sniff: any NUL byte in the first 8 KB → binary.
-    let sniff_len = bytes.len().min(8192);
-    if bytes[..sniff_len].contains(&0u8) {
-        return Err("File appears to be binary and cannot be edited as text.".to_string());
-    }
-    String::from_utf8(bytes).map_err(|_| "File is not valid UTF-8.".to_string())
+        let bytes = std::fs::read(&path).map_err(|e| format!("Failed to read file: {}", e))?;
+        // Quick binary sniff: any NUL byte in the first 8 KB → binary.
+        let sniff_len = bytes.len().min(8192);
+        if bytes[..sniff_len].contains(&0u8) {
+            return Err("File appears to be binary and cannot be edited as text.".to_string());
+        }
+        String::from_utf8(bytes).map_err(|_| "File is not valid UTF-8.".to_string())
+    })
+    .await
 }
 
 /// Write UTF-8 text back to a file. Refuses to create new paths — the file must
@@ -3187,14 +3226,17 @@ pub async fn write_text_file(
     path: String,
     content: String,
 ) -> Result<(), String> {
-    validate_path_is_trusted(&state, &path).await?;
+    wrap_cmd("write_text_file", async move {
+        validate_path_is_trusted(&state, &path).await?;
 
-    let meta = std::fs::metadata(&path).map_err(|e| format!("Failed to stat file: {}", e))?;
-    if meta.is_dir() {
-        return Err("Path is a directory".to_string());
-    }
-    std::fs::write(&path, content.as_bytes()).map_err(|e| format!("Failed to write file: {}", e))?;
-    Ok(())
+        let meta = std::fs::metadata(&path).map_err(|e| format!("Failed to stat file: {}", e))?;
+        if meta.is_dir() {
+            return Err("Path is a directory".to_string());
+        }
+        std::fs::write(&path, content.as_bytes()).map_err(|e| format!("Failed to write file: {}", e))?;
+        Ok(())
+    })
+    .await
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -3403,56 +3445,59 @@ pub async fn search_in_files(
     case_sensitive: bool,
     include_file_contents: bool,
 ) -> Result<SearchSummary, String> {
-    validate_path_is_trusted(&state, &path).await?;
+    wrap_cmd("search_in_files", async move {
+        validate_path_is_trusted(&state, &path).await?;
 
-    if query.trim().is_empty() {
-        return Ok(SearchSummary {
-            results: Vec::new(),
-            total_matches: 0,
-            total_files: 0,
-            truncated: false,
-        });
-    }
-
-    let root = std::path::PathBuf::from(&path)
-        .canonicalize()
-        .map_err(|e| format!("Invalid root: {}", e))?;
-    if !root.is_dir() {
-        return Err("Search root is not a directory".to_string());
-    }
-
-    let query_lower = query.to_lowercase();
-    let mut results: Vec<FileSearchResult> = Vec::new();
-    let mut total_matches: u32 = 0;
-    let mut files_seen: u32 = 0;
-
-    let completed = search_walk(
-        &root,
-        &root,
-        &query_lower,
-        &query,
-        case_sensitive,
-        include_file_contents,
-        &mut results,
-        &mut total_matches,
-        &mut files_seen,
-    );
-
-    // Show files with content matches first, then filename-only matches.
-    results.sort_by(|a, b| {
-        let a_only_name = a.matches.is_empty();
-        let b_only_name = b.matches.is_empty();
-        match (a_only_name, b_only_name) {
-            (false, true) => std::cmp::Ordering::Less,
-            (true, false) => std::cmp::Ordering::Greater,
-            _ => a.relative_path.to_lowercase().cmp(&b.relative_path.to_lowercase()),
+        if query.trim().is_empty() {
+            return Ok(SearchSummary {
+                results: Vec::new(),
+                total_matches: 0,
+                total_files: 0,
+                truncated: false,
+            });
         }
-    });
 
-    Ok(SearchSummary {
-        total_files: results.len() as u32,
-        total_matches,
-        truncated: !completed,
-        results,
+        let root = std::path::PathBuf::from(&path)
+            .canonicalize()
+            .map_err(|e| format!("Invalid root: {}", e))?;
+        if !root.is_dir() {
+            return Err("Search root is not a directory".to_string());
+        }
+
+        let query_lower = query.to_lowercase();
+        let mut results: Vec<FileSearchResult> = Vec::new();
+        let mut total_matches: u32 = 0;
+        let mut files_seen: u32 = 0;
+
+        let completed = search_walk(
+            &root,
+            &root,
+            &query_lower,
+            &query,
+            case_sensitive,
+            include_file_contents,
+            &mut results,
+            &mut total_matches,
+            &mut files_seen,
+        );
+
+        // Show files with content matches first, then filename-only matches.
+        results.sort_by(|a, b| {
+            let a_only_name = a.matches.is_empty();
+            let b_only_name = b.matches.is_empty();
+            match (a_only_name, b_only_name) {
+                (false, true) => std::cmp::Ordering::Less,
+                (true, false) => std::cmp::Ordering::Greater,
+                _ => a.relative_path.to_lowercase().cmp(&b.relative_path.to_lowercase()),
+            }
+        });
+
+        Ok(SearchSummary {
+            total_files: results.len() as u32,
+            total_matches,
+            truncated: !completed,
+            results,
+        })
     })
+    .await
 }
