@@ -33,6 +33,9 @@ function formatDroppedPath(path: string): string {
   return sanitized;
 }
 
+const SCROLLBACK_ACTIVE = 100_000;
+const SCROLLBACK_INACTIVE = 10_000;
+
 interface TerminalViewProps {
   terminalId: string;
 }
@@ -46,6 +49,9 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
   // Narrow selector — only re-render when THIS terminal's instance changes,
   // not on every output-unread-set update for other terminals.
   const instance = useTerminalStore((s) => s.terminals.get(terminalId));
+  // Track whether this terminal is the currently active tab so we can
+  // adjust scrollback buffer size (active → large, inactive → small).
+  const isActive = useTerminalStore((s) => s.activeTerminalId === terminalId);
   // Stable action refs: these are static on the store so pulling them via
   // getState avoids putting them in the effect dep array (which was causing
   // the xterm instance to tear down on every unrelated store update).
@@ -91,10 +97,9 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       cursorStyle: 'bar',
       cursorWidth: 2,
       allowProposedApi: true,
-      // Large scrollback so long Claude sessions stay fully scrollable, like
-      // a regular CMD/PowerShell window. ~100 bytes/line ≈ 10MB per terminal
-      // worst case, which is acceptable even with an 8-terminal grid.
-      scrollback: 100000,
+      // Start at the reduced scrollback; the active-terminal effect below
+      // bumps it to SCROLLBACK_ACTIVE once the terminal gains focus.
+      scrollback: SCROLLBACK_INACTIVE,
     });
 
     const fitAddon = new FitAddon();
@@ -279,6 +284,16 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       unlisten?.();
     };
   }, [terminalId]);
+
+  // Adjust xterm scrollback buffer based on focus state.
+  // Active terminal gets the full 100k-line buffer; inactive terminals are
+  // trimmed to 10k lines to reduce memory pressure when many tabs are open.
+  // xterm.js trims the existing buffer immediately when the value is lowered.
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal) return;
+    terminal.options.scrollback = isActive ? SCROLLBACK_ACTIVE : SCROLLBACK_INACTIVE;
+  }, [isActive]);
 
   return (
     <div className="h-full w-full bg-bg-primary relative flex flex-col">
