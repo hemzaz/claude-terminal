@@ -80,6 +80,7 @@ const CORS_HEADERS: Record<string, string> = {
 const LIVE_TTL_SECONDS = 900;
 const MAX_HISTORY_DAYS = 365;
 const RATE_LIMIT_TTL_SECONDS = 60;
+const ERROR_RETENTION_DAYS = 90;
 
 function requireToken(request: Request, expected: string | undefined): Response | null {
   if (!expected) return json({ error: 'server_misconfigured' }, 500);
@@ -419,7 +420,7 @@ async function handleStatsHistory(url: URL, env: Env): Promise<Response> {
 export default {
   async scheduled(_controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     try {
-      await env.DB.prepare("DELETE FROM errors WHERE ts < datetime('now', '-90 days')").run();
+      await env.DB.prepare("DELETE FROM errors WHERE ts < datetime('now', ?)").bind(`-${ERROR_RETENTION_DAYS} days`).run();
     } catch (err) {
       console.error('[scheduled] error cleanup failed:', err);
     }
