@@ -2,6 +2,7 @@ use portable_pty::{native_pty_system, Child, CommandBuilder, PtyPair, PtySize};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{BufWriter, Read, Write};
+use std::sync::{Arc, Mutex as StdMutex};
 use std::thread::JoinHandle;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -33,7 +34,9 @@ pub struct Terminal {
     pub config: TerminalConfig,
     /// Kept alive to maintain the PTY connection
     pub pty_pair: PtyPair,
-    pub writer: Box<dyn Write + Send>,
+    /// Per-terminal writer lock — allows concurrent writes to different terminals
+    /// without contending on the outer TerminalManager mutex.
+    pub writer: Arc<StdMutex<Box<dyn Write + Send>>>,
     /// Handle to the reader thread for cleanup on close
     pub reader_handle: Option<JoinHandle<()>>,
     /// Child process handle — killed explicitly on close so the PTY read
@@ -190,8 +193,10 @@ impl TerminalManager {
 
         let mut reader = pty_pair.master.try_clone_reader()
             .map_err(|e| format!("Failed to clone reader: {}", e))?;
-        let writer = pty_pair.master.take_writer()
-            .map_err(|e| format!("Failed to take writer: {}", e))?;
+        let writer = Arc::new(StdMutex::new(
+            pty_pair.master.take_writer()
+                .map_err(|e| format!("Failed to take writer: {}", e))?
+        ));
 
         // Spawn reader thread
         let terminal_id = id.clone();
@@ -336,8 +341,10 @@ impl TerminalManager {
 
         let mut reader = pty_pair.master.try_clone_reader()
             .map_err(|e| format!("Failed to clone reader: {}", e))?;
-        let writer = pty_pair.master.take_writer()
-            .map_err(|e| format!("Failed to take writer: {}", e))?;
+        let writer = Arc::new(StdMutex::new(
+            pty_pair.master.take_writer()
+                .map_err(|e| format!("Failed to take writer: {}", e))?
+        ));
 
         let terminal_id = id.clone();
         let reader_handle = std::thread::spawn(move || {
@@ -446,8 +453,10 @@ impl TerminalManager {
 
         let mut reader = pty_pair.master.try_clone_reader()
             .map_err(|e| format!("Failed to clone reader: {}", e))?;
-        let writer = pty_pair.master.take_writer()
-            .map_err(|e| format!("Failed to take writer: {}", e))?;
+        let writer = Arc::new(StdMutex::new(
+            pty_pair.master.take_writer()
+                .map_err(|e| format!("Failed to take writer: {}", e))?
+        ));
 
         let terminal_id = id.clone();
         let reader_handle = std::thread::spawn(move || {
@@ -484,14 +493,19 @@ impl TerminalManager {
         Ok(config)
     }
 
-    pub fn write(&mut self, id: &str, data: &[u8]) -> Result<(), String> {
-        if let Some(terminal) = self.terminals.get_mut(id) {
-            terminal
-                .writer
-                .write_all(data)
-                .map_err(|e| format!("Failed to write: {}", e))?;
-            terminal.writer.flush().map_err(|e| format!("Failed to flush: {}", e))?;
-            Ok(())
+    /// Return a cloned Arc to the per-terminal writer. The caller can hold this
+    /// *after* releasing the TerminalManager lock, enabling concurrent writes to
+    /// different terminals without cross-terminal contention.
+    pub fn get_writer(&self, id: &str) -> Option<Arc<StdMutex<Box<dyn Write + Send>>>> {
+        self.terminals.get(id).map(|t| Arc::clone(&t.writer))
+    }
+
+    pub fn write(&self, id: &str, data: &[u8]) -> Result<(), String> {
+        if let Some(terminal) = self.terminals.get(id) {
+            let mut w = terminal.writer.lock()
+                .map_err(|_| "Terminal writer mutex poisoned".to_string())?;
+            w.write_all(data).map_err(|e| format!("Failed to write: {}", e))?;
+            w.flush().map_err(|e| format!("Failed to flush: {}", e))
         } else {
             Err("Terminal not found".to_string())
         }
