@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/platform-Windows-blue?style=flat-square" alt="Platform">
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-blue?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/version-1.20.8-green?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-orange?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/Tauri-2.x-purple?style=flat-square" alt="Tauri">
@@ -29,7 +29,7 @@
 
 ## Overview
 
-**ClaudeTerminal** is a sleek, modern Windows desktop application designed to help developers manage multiple [Claude Code](https://docs.anthropic.com/en/docs/claude-code) terminal instances from a unified interface. Built with Tauri and React, it provides a powerful workspace for running parallel Claude Code sessions with custom configurations, real-time monitoring, and intelligent command assistance.
+**ClaudeTerminal** is a sleek, modern desktop application (Windows + macOS Apple Silicon) designed to help developers manage multiple [Claude Code](https://docs.anthropic.com/en/docs/claude-code) terminal instances from a unified interface. Built with Tauri and React, it provides a powerful workspace for running parallel Claude Code sessions with custom configurations, real-time monitoring, and intelligent command assistance.
 
 ## Screenshots
 
@@ -116,27 +116,49 @@
 
 Before installing ClaudeTerminal, ensure you have:
 
-1. **Node.js** (v18 or higher) - [Download](https://nodejs.org/)
-2. **Claude Code** - Install via npm:
+1. **Node.js** (v18 or higher) — [Download](https://nodejs.org/) or `brew install node`
+2. **Claude Code** — install via npm:
    ```bash
    npm install -g @anthropic-ai/claude-code
    ```
 
-### Download
+### macOS (Apple Silicon)
 
-Download the latest release for Windows from the [Releases page](https://github.com/talayash/claude-terminal/releases/latest):
+The cleanest install is via the Homebrew tap — it strips the Gatekeeper quarantine attribute automatically and `brew upgrade` handles future updates.
+
+```bash
+brew tap hemzaz/claude-terminal https://github.com/hemzaz/claude-terminal
+brew install --cask hemzaz/claude-terminal/claude-terminal
+```
+
+> The `https://...` URL is required because the repo isn't named `homebrew-*`. After the initial `brew tap`, future updates work with `brew upgrade --cask claude-terminal`.
+
+Or, manually:
+
+1. Download the `.dmg` from the [Releases page](https://github.com/hemzaz/claude-terminal/releases/latest).
+2. Drag `ClaudeTerminal.app` to `/Applications`.
+3. The app is **not notarized** (no Apple Developer account). On first launch macOS will block it. Run this once in Terminal to clear the quarantine attribute:
+   ```bash
+   xattr -cr /Applications/ClaudeTerminal.app
+   ```
+4. Open the app normally.
+
+> **Update channel:** macOS update delivery is configurable in **Settings → App Updates → Update source** — Homebrew (recommended) or in-app updater.
+
+### Windows
+
+Download the latest release from the [Releases page](https://github.com/hemzaz/claude-terminal/releases/latest):
 
 | Installer Type | Description |
 |---------------|-------------|
-| [ClaudeTerminal_1.20.8_x64-setup.exe](https://github.com/talayash/claude-terminal/releases/latest/download/ClaudeTerminal_1.20.8_x64-setup.exe) | NSIS Installer (Recommended) |
-| [ClaudeTerminal_1.20.8_x64_en-US.msi](https://github.com/talayash/claude-terminal/releases/latest/download/ClaudeTerminal_1.20.8_x64_en-US.msi) | MSI Installer |
+| [ClaudeTerminal_1.20.8_x64-setup.exe](https://github.com/hemzaz/claude-terminal/releases/latest/download/ClaudeTerminal_1.20.8_x64-setup.exe) | NSIS Installer (Recommended) |
+| [ClaudeTerminal_1.20.8_x64_en-US.msi](https://github.com/hemzaz/claude-terminal/releases/latest/download/ClaudeTerminal_1.20.8_x64_en-US.msi) | MSI Installer |
 
 ### First Launch
 
-1. Run the installer and follow the setup wizard
-2. Launch ClaudeTerminal from the Start Menu or Desktop
-3. If Claude Code is not detected, the setup wizard will guide you through installation
-4. Click "New Terminal" to create your first Claude Code session
+1. Run the installer (or open the app from `/Applications` on macOS) and follow the setup wizard
+2. If Claude Code is not detected, the setup wizard will guide you through installation
+3. Click "New Terminal" to create your first Claude Code session
 
 ## Usage
 
@@ -196,13 +218,14 @@ Press `F1` or click the lightbulb icon to open the Hints panel:
 
 - [Node.js](https://nodejs.org/) v18+
 - [Rust](https://rustup.rs/) (latest stable)
-- [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (Windows)
+- **Windows:** [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+- **macOS:** Xcode Command Line Tools (`xcode-select --install`) and `rustup target add aarch64-apple-darwin`
 
 ### Steps
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/talayash/claude-terminal.git
+   git clone https://github.com/hemzaz/claude-terminal.git
    cd claude-terminal
    ```
 
@@ -222,8 +245,10 @@ Press `F1` or click the lightbulb icon to open the Hints panel:
    ```
 
    The installers will be available in:
-   - `src-tauri/target/release/bundle/nsis/` (NSIS installer)
-   - `src-tauri/target/release/bundle/msi/` (MSI installer)
+   - `src-tauri/target/release/bundle/nsis/` (Windows NSIS installer)
+   - `src-tauri/target/release/bundle/msi/` (Windows MSI installer)
+   - `src-tauri/target/release/bundle/dmg/` (macOS .dmg)
+   - `src-tauri/target/release/bundle/macos/` (macOS .app)
 
 ## Tech Stack
 
