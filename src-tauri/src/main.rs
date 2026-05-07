@@ -7,7 +7,7 @@ mod database;
 mod telemetry;
 mod error_reporter;
 
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -57,6 +57,115 @@ fn main() {
                 terminals: Arc::new(Mutex::new(terminal_manager)),
                 db: Arc::new(Mutex::new(db)),
             });
+
+            // ── macOS native menubar ──────────────────────────────────────────
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
+
+                let app_submenu = SubmenuBuilder::new(app, "Claude Terminal")
+                    .about(None)
+                    .separator()
+                    .services()
+                    .separator()
+                    .hide()
+                    .hide_others()
+                    .show_all()
+                    .separator()
+                    .quit()
+                    .build()?;
+
+                let new_term = MenuItemBuilder::with_id("menu-new-terminal", "New Terminal")
+                    .accelerator("CmdOrCtrl+T")
+                    .build(app)?;
+                let close_term =
+                    MenuItemBuilder::with_id("menu-close-terminal", "Close Terminal")
+                        .accelerator("CmdOrCtrl+W")
+                        .build(app)?;
+                let file_submenu = SubmenuBuilder::new(app, "File")
+                    .item(&new_term)
+                    .item(&close_term)
+                    .build()?;
+
+                let find = MenuItemBuilder::with_id("menu-find", "Find...")
+                    .accelerator("CmdOrCtrl+F")
+                    .build(app)?;
+                let edit_submenu = SubmenuBuilder::new(app, "Edit")
+                    .undo()
+                    .redo()
+                    .separator()
+                    .cut()
+                    .copy()
+                    .paste()
+                    .select_all()
+                    .separator()
+                    .item(&find)
+                    .build()?;
+
+                let toggle_sidebar =
+                    MenuItemBuilder::with_id("menu-toggle-sidebar", "Toggle Sidebar")
+                        .accelerator("CmdOrCtrl+B")
+                        .build(app)?;
+                let toggle_hints =
+                    MenuItemBuilder::with_id("menu-toggle-hints", "Toggle Hints Panel")
+                        .accelerator("F1")
+                        .build(app)?;
+                let toggle_grid =
+                    MenuItemBuilder::with_id("menu-toggle-grid", "Toggle Grid View")
+                        .accelerator("CmdOrCtrl+G")
+                        .build(app)?;
+                let view_submenu = SubmenuBuilder::new(app, "View")
+                    .item(&toggle_sidebar)
+                    .item(&toggle_hints)
+                    .item(&toggle_grid)
+                    .build()?;
+
+                let zoom = PredefinedMenuItem::maximize(app, Some("Zoom"))?;
+                let window_submenu = SubmenuBuilder::new(app, "Window")
+                    .minimize()
+                    .item(&zoom)
+                    .build()?;
+
+                let docs =
+                    MenuItemBuilder::with_id("menu-docs", "Documentation").build(app)?;
+                let report =
+                    MenuItemBuilder::with_id("menu-report-issue", "Report Issue").build(app)?;
+                let help_submenu = SubmenuBuilder::new(app, "Help")
+                    .item(&docs)
+                    .item(&report)
+                    .build()?;
+
+                let menu = MenuBuilder::new(app)
+                    .item(&app_submenu)
+                    .item(&file_submenu)
+                    .item(&edit_submenu)
+                    .item(&view_submenu)
+                    .item(&window_submenu)
+                    .item(&help_submenu)
+                    .build()?;
+
+                app.set_menu(menu)?;
+                app.on_menu_event(|app, event| {
+                    match event.id().as_ref() {
+                        id @ ("menu-new-terminal" | "menu-close-terminal"
+                        | "menu-toggle-sidebar" | "menu-toggle-hints"
+                        | "menu-toggle-grid" | "menu-find") => {
+                            let _ = app.emit("menu-event", id);
+                        }
+                        "menu-docs" => {
+                            let _ = open::that(
+                                "https://github.com/hemzaz/claude-terminal#readme",
+                            );
+                        }
+                        "menu-report-issue" => {
+                            let _ = open::that(
+                                "https://github.com/hemzaz/claude-terminal/issues/new",
+                            );
+                        }
+                        _ => {}
+                    }
+                });
+            }
 
             Ok(())
         })

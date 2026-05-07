@@ -228,6 +228,36 @@ function App() {
     };
   }, [notifyOnFinish, notify, updateTerminalStatus, setSessionSummary]);
 
+  // macOS native menubar events
+  useEffect(() => {
+    const unlisten = listen<string>('menu-event', (event) => {
+      const appState = useAppStore.getState();
+      switch (event.payload) {
+        case 'menu-new-terminal':
+          appState.openModal('newTerminal');
+          break;
+        case 'menu-close-terminal': {
+          const activeId = useTerminalStore.getState().activeTerminalId;
+          if (activeId) useTerminalStore.getState().closeTerminal(activeId);
+          break;
+        }
+        case 'menu-toggle-sidebar':
+          appState.toggleSidebar();
+          break;
+        case 'menu-toggle-hints':
+          appState.toggleHints();
+          break;
+        case 'menu-toggle-grid':
+          appState.toggleGridMode();
+          break;
+        case 'menu-find':
+          appState.openModal('commandPalette');
+          break;
+      }
+    });
+    return () => { unlisten.then(fn => fn()); };
+  }, []);
+
   // Restore previous session on startup — show banner instead of silently restoring
   useEffect(() => {
     if (showSetup !== false) return;
