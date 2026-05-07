@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle, XCircle, Download, ExternalLink, Loader2, Terminal, Box, RefreshCw, AlertTriangle, ShieldOff } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { useAppStore } from '../store/appStore';
 
 interface SystemStatus {
   node_installed: boolean;
@@ -26,6 +27,24 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   const [quarantineError, setQuarantineError] = useState<string | null>(null);
 
   const mountedRef = useRef(true);
+  const { notifyOnFinish } = useAppStore();
+
+  // Warm up macOS notification permission by sending a welcome notification on
+  // first completion. The user sees it in context (just finished setup) rather
+  // than the first time a terminal exits mid-session.
+  const handleComplete = useCallback(async () => {
+    if (notifyOnFinish) {
+      try {
+        await invoke('send_notification', {
+          title: 'ClaudeTerminal ready',
+          body: "Setup complete — you're all set to start coding with Claude.",
+        });
+      } catch {
+        // Non-fatal: proceed to app even if notification fails.
+      }
+    }
+    onComplete();
+  }, [notifyOnFinish, onComplete]);
 
   const checkQuarantine = async () => {
     try {
@@ -57,7 +76,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
 
       if (result.claude_installed) {
         setTimeout(() => {
-          if (mountedRef.current) onComplete();
+          if (mountedRef.current) handleComplete();
         }, 1500);
       }
     } catch (error) {
@@ -107,7 +126,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     },
     {
       title: 'Claude Code',
-      description: 'Anthropic\'s CLI tool for AI-powered coding',
+      description: "Anthropic's CLI tool for AI-powered coding",
       installed: status?.claude_installed,
       version: status?.claude_version,
       downloadUrl: 'https://docs.anthropic.com/en/docs/claude-code',
@@ -268,7 +287,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
           <AnimatePresence mode="wait">
             {allInstalled ? (
               <button
-                onClick={onComplete}
+                onClick={handleComplete}
                 className="flex items-center gap-2 bg-success hover:bg-success/90 text-white h-9 px-5 rounded-md text-[13px] font-medium transition-colors"
               >
                 <CheckCircle size={16} />
