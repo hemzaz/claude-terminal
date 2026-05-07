@@ -102,6 +102,9 @@ impl Database {
             "
         ).map_err(|e| e.to_string())?;
 
+        // Migrate: add last_used_at column if it doesn't exist yet (ignore error if already present)
+        let _ = conn.execute("ALTER TABLE profiles ADD COLUMN last_used_at TEXT", []);
+
         Ok(Self { conn })
     }
 
@@ -114,8 +117,8 @@ impl Database {
         let env_vars_json = serde_json::to_string(&profile.env_vars)
             .map_err(|e| format!("Failed to serialize env_vars: {}", e))?;
         self.conn.execute(
-            "INSERT OR REPLACE INTO profiles (id, name, description, working_directory, claude_args, env_vars, is_default)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT OR REPLACE INTO profiles (id, name, description, working_directory, claude_args, env_vars, is_default, last_used_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 profile.id,
                 profile.name,
@@ -124,6 +127,7 @@ impl Database {
                 claude_args_json,
                 env_vars_json,
                 profile.is_default as i32,
+                profile.last_used_at,
             ],
         ).map_err(|e| e.to_string())?;
         Ok(())
@@ -131,7 +135,11 @@ impl Database {
 
     pub fn get_profiles(&self) -> Result<Vec<ConfigProfile>, String> {
         let mut stmt = self.conn
-            .prepare("SELECT id, name, description, working_directory, claude_args, env_vars, is_default FROM profiles")
+            .prepare(
+                "SELECT id, name, description, working_directory, claude_args, env_vars, is_default, last_used_at
+                 FROM profiles
+                 ORDER BY last_used_at DESC NULLS LAST, name ASC"
+            )
             .map_err(|e| e.to_string())?;
 
         let profiles = stmt.query_map([], |row| {
@@ -143,6 +151,7 @@ impl Database {
                 claude_args: serde_json::from_str(&row.get::<_, String>(4)?).unwrap_or_default(),
                 env_vars: serde_json::from_str(&row.get::<_, String>(5)?).unwrap_or_default(),
                 is_default: row.get::<_, i32>(6)? != 0,
+                last_used_at: row.get(7)?,
             })
         }).map_err(|e| e.to_string())?;
 
@@ -152,6 +161,14 @@ impl Database {
     pub fn delete_profile(&self, id: &str) -> Result<(), String> {
         self.conn.execute("DELETE FROM profiles WHERE id = ?1", params![id])
             .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn update_profile_last_used(&self, id: &str, timestamp: &str) -> Result<(), String> {
+        self.conn.execute(
+            "UPDATE profiles SET last_used_at = ?1 WHERE id = ?2",
+            params![timestamp, id],
+        ).map_err(|e| e.to_string())?;
         Ok(())
     }
 

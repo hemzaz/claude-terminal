@@ -274,6 +274,19 @@ pub async fn delete_profile(state: State<'_, AppState>, id: String) -> Result<()
 }
 
 #[command]
+pub async fn update_profile_last_used(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
+    wrap_cmd("update_profile_last_used", async move {
+        let timestamp = chrono::Utc::now().to_rfc3339();
+        let db = state.db.lock().await;
+        db.update_profile_last_used(&id, &timestamp)
+    })
+    .await
+}
+
+#[command]
 pub async fn get_claude_version() -> Result<String, String> {
     wrap_cmd("get_claude_version", async move {
         let output = shell_command("claude", &["--version"])
