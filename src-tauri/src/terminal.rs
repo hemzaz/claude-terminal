@@ -548,6 +548,56 @@ impl TerminalManager {
         self.terminals.clear();
     }
 
+    /// Gracefully shut down all PTY child processes:
+    /// 1. Send SIGTERM to every child (Unix) or kill() immediately (Windows).
+    /// 2. Poll try_wait() for up to 2 seconds so children can flush and exit cleanly.
+    /// 3. Force-kill any process that did not exit within the grace period.
+    /// 4. Clear all terminal state.
+    pub fn shutdown_all_graceful(&mut self) {
+        // Phase 1: request graceful termination
+        for terminal in self.terminals.values_mut() {
+            #[cfg(unix)]
+            {
+                if let Some(pid) = terminal.child.process_id() {
+                    // SAFETY: `pid` is a valid process ID returned by the OS for a child
+                    // we spawned. SIGTERM asks the process to exit without forcing it,
+                    // so this is safe even if the process has already exited.
+                    unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM); }
+                }
+            }
+            #[cfg(not(unix))]
+            {
+                // Windows has no SIGTERM equivalent; kill() closes the PTY immediately.
+                let _ = terminal.child.kill();
+            }
+        }
+
+        // Phase 2: wait up to 2 s for all children to exit
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        loop {
+            if std::time::Instant::now() >= deadline {
+                break;
+            }
+            let all_done = self
+                .terminals
+                .values_mut()
+                .all(|t| matches!(t.child.try_wait(), Ok(Some(_))));
+            if all_done {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+
+        // Phase 3: force-kill anything still running after the grace period
+        for terminal in self.terminals.values_mut() {
+            if !matches!(terminal.child.try_wait(), Ok(Some(_))) {
+                let _ = terminal.child.kill();
+            }
+        }
+
+        self.terminals.clear();
+    }
+
     pub fn get_all_configs(&self) -> Vec<TerminalConfig> {
         self.terminals.values().map(|t| t.config.clone()).collect()
     }

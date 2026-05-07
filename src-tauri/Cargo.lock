@@ -476,6 +476,7 @@ version = "1.20.9"
 dependencies = [
  "chrono",
  "directories",
+ "libc",
  "notify-rust",
  "open",
  "portable-pty",

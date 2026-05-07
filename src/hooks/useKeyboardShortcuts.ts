@@ -1,6 +1,10 @@
 import { useEffect, useRef } from 'react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { exit } from '@tauri-apps/plugin-process';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
+
+const isMac = navigator.platform.toUpperCase().includes('MAC');
 
 export function useKeyboardShortcuts() {
   // Use refs for values that change frequently to avoid re-registering the listener
@@ -25,9 +29,54 @@ export function useKeyboardShortcuts() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const ctrl = e.ctrlKey || e.metaKey;
+      const meta = e.metaKey;
       const shift = e.shiftKey;
 
+      // ── macOS-only Cmd shortcuts ───────────────────────────────────────────
+
+      // Cmd+Q: quit application (macOS muscle-memory; Ctrl+Q intentionally unbound)
+      if (isMac && meta && !shift && e.key === 'q') {
+        e.preventDefault();
+        exit(0);
+        return;
+      }
+
+      // Cmd+M: minimize window (matches macOS system convention)
+      if (isMac && meta && !shift && e.key === 'm') {
+        e.preventDefault();
+        getCurrentWindow().minimize();
+        return;
+      }
+
+      // Cmd+Shift+W (macOS): close all terminals currently in grid view.
+      // Checked before Ctrl+Shift+W → worktree-modal so Cmd+Shift+W on Mac
+      // does not accidentally trigger the worktree handler.
+      if (isMac && meta && shift && e.key === 'W') {
+        e.preventDefault();
+        const { gridTerminalIds, clearGrid } = useAppStore.getState();
+        const { closeTerminal } = useTerminalStore.getState();
+        const ids = [...gridTerminalIds];
+        clearGrid();
+        ids.forEach((id) => closeTerminal(id));
+        return;
+      }
+
+      // Cmd+Shift+T (macOS): reopen most-recently-closed terminal.
+      // TODO: implement once Issue #15 (soft-delete closed terminals) ships.
+      if (isMac && meta && shift && e.key === 'T') {
+        e.preventDefault();
+        return;
+      }
+
+      // ── Cross-platform shortcuts ───────────────────────────────────────────
+
       if (ctrl && shift && e.key === 'N') {
+        e.preventDefault();
+        useAppStore.getState().openModal('newTerminal');
+      }
+
+      // Cmd+T / Ctrl+T: open new terminal (matches browser/terminal convention)
+      if (ctrl && !shift && e.key === 't') {
         e.preventDefault();
         useAppStore.getState().openModal('newTerminal');
       }
@@ -85,6 +134,7 @@ export function useKeyboardShortcuts() {
         useAppStore.getState().toggleSidebar();
       }
 
+      // Cmd+W / Ctrl+W: close active terminal
       if (ctrl && e.key === 'w') {
         e.preventDefault();
         const activeId = activeIdRef.current;
@@ -111,6 +161,7 @@ export function useKeyboardShortcuts() {
         }
       }
 
+      // Cmd+, / Ctrl+,: Settings
       if (ctrl && e.key === ',') {
         e.preventDefault();
         useAppStore.getState().openModal('settings');
@@ -127,7 +178,7 @@ export function useKeyboardShortcuts() {
         useAppStore.getState().toggleGridMode();
       }
 
-      // Worktree Modal: Ctrl+Shift+W
+      // Worktree Modal: Ctrl+Shift+W (on macOS, Cmd+Shift+W is handled above)
       if (ctrl && shift && e.key === 'W') {
         e.preventDefault();
         const activeId = activeIdRef.current;

@@ -130,7 +130,7 @@ pub async fn write_to_terminal(
                 MAX_TERMINAL_WRITE_SIZE
             ));
         }
-        let mut terminals = state.terminals.lock().await;
+        let terminals = state.terminals.lock().await;
         terminals.write(&id, &data)
     })
     .await
