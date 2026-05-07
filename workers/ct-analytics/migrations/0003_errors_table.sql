@@ -13,4 +13,4 @@ CREATE TABLE IF NOT EXISTS errors (
 );
 CREATE INDEX IF NOT EXISTS idx_errors_ts          ON errors(ts);
 CREATE INDEX IF NOT EXISTS idx_errors_fingerprint ON errors(fingerprint);
-CREATE INDEX IF NOT EXISTS idx_errors_install     ON errors(installation_id);
+CREATE INDEX IF NOT EXISTS idx_errors_installation_id ON errors(installation_id);
