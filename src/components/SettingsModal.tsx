@@ -17,7 +17,7 @@ interface UpdateCheckResult {
 }
 
 export function SettingsModal() {
-  const { closeSettings, defaultClaudeArgs, setDefaultClaudeArgs, notifyOnFinish, setNotifyOnFinish, restoreSession, setRestoreSession, telemetryEnabled, setTelemetryEnabled, showGitPanel, setShowGitPanel, showFileTree, setShowFileTree } = useAppStore();
+  const { closeSettings, defaultClaudeArgs, setDefaultClaudeArgs, notifyOnFinish, setNotifyOnFinish, restoreSession, setRestoreSession, telemetryEnabled, setTelemetryEnabled, errorReportingEnabled, setErrorReportingEnabled, showGitPanel, setShowGitPanel, showFileTree, setShowFileTree } = useAppStore();
   const [claudeVersion, setClaudeVersion] = useState<string>('');
   const [latestVersion, setLatestVersion] = useState<string>('');
   const [updateAvailable, setUpdateAvailable] = useState<boolean | null>(null);
@@ -433,6 +433,37 @@ export function SettingsModal() {
                   <span
                     className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
                       telemetryEnabled ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Error Reporting */}
+          <div>
+            <h3 className="text-text-primary text-[13px] font-medium mb-2">Error Reporting</h3>
+            <div className="bg-bg-primary rounded-md ring-1 ring-border p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-text-primary text-[13px]">Send error reports</p>
+                  <p className="text-text-tertiary text-[11px] mt-0.5">
+                    Helps fix crashes. No personal data — Windows usernames are scrubbed.
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    const next = !errorReportingEnabled;
+                    setErrorReportingEnabled(next);
+                    invoke('set_error_reporting_enabled', { enabled: next }).catch(() => {});
+                  }}
+                  className={`relative w-10 h-5 rounded-full transition-colors ${
+                    errorReportingEnabled ? 'bg-accent-primary' : 'bg-border-light'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                      errorReportingEnabled ? 'translate-x-5' : 'translate-x-0'
                     }`}
                   />
                 </button>
