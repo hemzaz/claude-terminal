@@ -1,4 +1,4 @@
-use portable_pty::{native_pty_system, CommandBuilder, PtyPair, PtySize};
+use portable_pty::{native_pty_system, Child, CommandBuilder, PtyPair, PtySize};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{BufWriter, Read, Write};
@@ -36,6 +36,9 @@ pub struct Terminal {
     pub writer: Box<dyn Write + Send>,
     /// Handle to the reader thread for cleanup on close
     pub reader_handle: Option<JoinHandle<()>>,
+    /// Child process handle — killed explicitly on close so the PTY read
+    /// unblocks promptly on Windows (reads can block even after writer drop).
+    pub child: Box<dyn Child + Send + Sync>,
 }
 
 pub struct TerminalManager {
@@ -167,8 +170,8 @@ impl TerminalManager {
             cmd.env(key, value);
         }
 
-        // Spawn the command
-        let _child = pty_pair.slave.spawn_command(cmd)
+        // Spawn the command — keep the handle so we can kill it explicitly on close
+        let child = pty_pair.slave.spawn_command(cmd)
             .map_err(|e| format!("Failed to spawn command: {}", e))?;
 
         let id = Uuid::new_v4().to_string();
@@ -241,6 +244,7 @@ impl TerminalManager {
                 pty_pair,
                 writer,
                 reader_handle: Some(reader_handle),
+                child,
             },
         );
 
@@ -310,7 +314,8 @@ impl TerminalManager {
             cmd.cwd(&working_directory);
         }
 
-        let _child = pty_pair.slave.spawn_command(cmd)
+        // Keep child handle for explicit kill on close
+        let child = pty_pair.slave.spawn_command(cmd)
             .map_err(|e| format!("Failed to spawn npm run {}: {}", script_name, e))?;
 
         let id = Uuid::new_v4().to_string();
@@ -362,6 +367,7 @@ impl TerminalManager {
                 pty_pair,
                 writer,
                 reader_handle: Some(reader_handle),
+                child,
             },
         );
 
@@ -418,7 +424,8 @@ impl TerminalManager {
             cmd.cwd(&working_directory);
         }
 
-        let _child = pty_pair.slave.spawn_command(cmd)
+        // Keep child handle for explicit kill on close
+        let child = pty_pair.slave.spawn_command(cmd)
             .map_err(|e| format!("Failed to spawn shell: {}", e))?;
 
         let id = Uuid::new_v4().to_string();
@@ -470,6 +477,7 @@ impl TerminalManager {
                 pty_pair,
                 writer,
                 reader_handle: Some(reader_handle),
+                child,
             },
         );
 
@@ -508,19 +516,21 @@ impl TerminalManager {
     }
 
     pub fn close(&mut self, id: &str) -> Result<(), String> {
-        if let Some(terminal) = self.terminals.remove(id) {
-            // Dropping the terminal drops the writer and PTY pair, which signals EOF
-            // to the reader thread. The reader thread will exit on its next read attempt
-            // and clean up asynchronously. We do NOT join the reader thread here because
-            // on Windows, PTY reads can block indefinitely even after the writer is dropped,
-            // which would deadlock the mutex and freeze the entire application.
+        if let Some(mut terminal) = self.terminals.remove(id) {
+            // Kill the child process first so the PTY master read unblocks immediately.
+            // On Windows, PTY reads can block indefinitely even after the writer is
+            // dropped — without an explicit kill the reader thread would leak.
+            let _ = terminal.child.kill();
             drop(terminal);
         }
         Ok(())
     }
 
     pub fn close_all(&mut self) {
-        // Clear all terminals at once — reader threads clean up asynchronously
+        // Kill all child processes before clearing so reader threads unblock promptly.
+        for terminal in self.terminals.values_mut() {
+            let _ = terminal.child.kill();
+        }
         self.terminals.clear();
     }
 
