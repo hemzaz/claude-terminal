@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { X, Download, RefreshCw, CheckCircle, AlertCircle, ExternalLink, Check, Rocket } from 'lucide-react';
+import { X, Download, RefreshCw, CheckCircle, AlertCircle, ExternalLink, Check, Rocket, Bell } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
 import { useAppStore } from '../store/appStore';
@@ -27,6 +27,21 @@ export function SettingsModal() {
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'success' | 'error' | 'uptodate'>('idle');
   const [updateMessage, setUpdateMessage] = useState<string>('');
   const [argsText, setArgsText] = useState(defaultClaudeArgs.join('\n'));
+  const [isTestingNotification, setIsTestingNotification] = useState(false);
+
+  const sendTestNotification = async () => {
+    setIsTestingNotification(true);
+    try {
+      await invoke('send_notification', {
+        title: 'ClaudeTerminal',
+        body: 'Notifications are working correctly.',
+      });
+    } catch {
+      // Notification error is visible via OS — no in-app feedback needed.
+    } finally {
+      setIsTestingNotification(false);
+    }
+  };
 
   // App version + auto-updater
   const [appVersion, setAppVersion] = useState<string>('');
@@ -401,6 +416,16 @@ export function SettingsModal() {
                       notifyOnFinish ? 'translate-x-5' : 'translate-x-0'
                     }`}
                   />
+                </button>
+              </div>
+              <div className="mt-2 pt-2 border-t border-border">
+                <button
+                  onClick={sendTestNotification}
+                  disabled={isTestingNotification}
+                  className="flex items-center gap-2 text-text-secondary hover:text-text-primary text-[12px] transition-colors disabled:opacity-50"
+                >
+                  <Bell size={13} />
+                  {isTestingNotification ? 'Sending…' : 'Send test notification'}
                 </button>
               </div>
             </div>
