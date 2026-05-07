@@ -1,6 +1,7 @@
 import { Component, useEffect, useState } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { reportError } from './lib/errorReporter';
 import { TitleBar } from './components/TitleBar';
 import { Sidebar } from './components/Sidebar';
 import { TerminalTabs } from './components/TerminalTabs';
@@ -33,16 +34,20 @@ import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
 
-class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
   constructor(props: { children: ReactNode }) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false };
   }
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true, error };
+  static getDerivedStateFromError() {
+    return { hasError: true };
   }
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('ErrorBoundary caught:', error, info);
+    reportError(
+      error.name,
+      error.message,
+      `${error.stack ?? ''}\n\nReact stack:${info.componentStack ?? ''}`,
+    );
   }
   render() {
     if (this.state.hasError) {
@@ -50,12 +55,14 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
         <div className="h-screen w-screen bg-bg-primary flex items-center justify-center">
           <div className="text-center max-w-md p-6">
             <h2 className="text-text-primary text-lg font-semibold mb-2">Something went wrong</h2>
-            <p className="text-text-secondary text-sm mb-4">{this.state.error?.message}</p>
+            <p className="text-text-secondary text-sm mb-4">
+              The app hit an unexpected error. Reload to recover.
+            </p>
             <button
-              onClick={() => this.setState({ hasError: false, error: null })}
+              onClick={() => window.location.reload()}
               className="bg-accent-primary hover:bg-accent-secondary text-white px-4 py-2 rounded-md text-sm"
             >
-              Try Again
+              Reload
             </button>
           </div>
         </div>
