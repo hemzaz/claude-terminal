@@ -275,17 +275,20 @@ pub async fn delete_profile(state: State<'_, AppState>, id: String) -> Result<()
 
 #[command]
 pub async fn get_claude_version() -> Result<String, String> {
-    let output = shell_command("claude", &["--version"])
-        .output()
-        .map_err(|e| e.to_string())?;
+    wrap_cmd("get_claude_version", async move {
+        let output = shell_command("claude", &["--version"])
+            .output()
+            .map_err(|e| e.to_string())?;
 
-    if !output.status.success() {
-        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
-    }
+        if !output.status.success() {
+            return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+        }
 
-    String::from_utf8(output.stdout)
-        .map(|s| s.trim().to_string())
-        .map_err(|e| e.to_string())
+        String::from_utf8(output.stdout)
+            .map(|s| s.trim().to_string())
+            .map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -297,61 +300,67 @@ pub struct UpdateCheckResult {
 
 #[command]
 pub async fn check_claude_update() -> Result<UpdateCheckResult, String> {
-    // Get current version
-    let current_output = shell_command("claude", &["--version"])
-        .output()
-        .map_err(|e| format!("Failed to get current version: {}", e))?;
+    wrap_cmd("check_claude_update", async move {
+        // Get current version
+        let current_output = shell_command("claude", &["--version"])
+            .output()
+            .map_err(|e| format!("Failed to get current version: {}", e))?;
 
-    let current_version = String::from_utf8_lossy(&current_output.stdout)
-        .trim()
-        .to_string();
+        let current_version = String::from_utf8_lossy(&current_output.stdout)
+            .trim()
+            .to_string();
 
-    if current_version.is_empty() {
-        return Err("Claude Code is not installed".to_string());
-    }
+        if current_version.is_empty() {
+            return Err("Claude Code is not installed".to_string());
+        }
 
-    // Get latest version from npm
-    let npm_output = shell_command("npm", &["view", "@anthropic-ai/claude-code", "version"])
-        .output()
-        .map_err(|e| format!("Failed to check latest version: {}", e))?;
+        // Get latest version from npm
+        let npm_output = shell_command("npm", &["view", "@anthropic-ai/claude-code", "version"])
+            .output()
+            .map_err(|e| format!("Failed to check latest version: {}", e))?;
 
-    let latest_version = String::from_utf8_lossy(&npm_output.stdout)
-        .trim()
-        .to_string();
+        let latest_version = String::from_utf8_lossy(&npm_output.stdout)
+            .trim()
+            .to_string();
 
-    if latest_version.is_empty() {
-        return Err("Failed to fetch latest version from npm".to_string());
-    }
+        if latest_version.is_empty() {
+            return Err("Failed to fetch latest version from npm".to_string());
+        }
 
-    // Extract version number from current version string (e.g., "1.0.17 (Claude Code)" -> "1.0.17")
-    let current_ver_clean = current_version
-        .split_whitespace()
-        .next()
-        .unwrap_or(&current_version)
-        .to_string();
+        // Extract version number from current version string (e.g., "1.0.17 (Claude Code)" -> "1.0.17")
+        let current_ver_clean = current_version
+            .split_whitespace()
+            .next()
+            .unwrap_or(&current_version)
+            .to_string();
 
-    let update_available = current_ver_clean != latest_version;
+        let update_available = current_ver_clean != latest_version;
 
-    Ok(UpdateCheckResult {
-        current_version,
-        latest_version,
-        update_available,
+        Ok(UpdateCheckResult {
+            current_version,
+            latest_version,
+            update_available,
+        })
     })
+    .await
 }
 
 #[command]
 pub async fn update_claude_code() -> Result<String, String> {
-    let output = shell_command("npm", &["install", "-g", "@anthropic-ai/claude-code@latest"])
-        .output()
-        .map_err(|e| format!("Failed to run npm: {}", e))?;
+    wrap_cmd("update_claude_code", async move {
+        let output = shell_command("npm", &["install", "-g", "@anthropic-ai/claude-code@latest"])
+            .output()
+            .map_err(|e| format!("Failed to run npm: {}", e))?;
 
-    if output.status.success() {
-        Ok("Claude Code updated successfully!".to_string())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        Err(format!("{}{}", stderr, stdout))
-    }
+        if output.status.success() {
+            Ok("Claude Code updated successfully!".to_string())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            Err(format!("{}{}", stderr, stdout))
+        }
+    })
+    .await
 }
 
 #[command]
@@ -443,88 +452,100 @@ fn shell_command(program: &str, args: &[&str]) -> std::process::Command {
 
 #[command]
 pub async fn check_system_requirements() -> Result<SystemStatus, String> {
-    // Check Node.js
-    let node_result = shell_command("node", &["--version"]).output();
+    wrap_cmd("check_system_requirements", async move {
+        // Check Node.js
+        let node_result = shell_command("node", &["--version"]).output();
 
-    let (node_installed, node_version) = match node_result {
-        Ok(output) if output.status.success() => {
-            let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            (true, Some(version))
-        }
-        _ => (false, None),
-    };
+        let (node_installed, node_version) = match node_result {
+            Ok(output) if output.status.success() => {
+                let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                (true, Some(version))
+            }
+            _ => (false, None),
+        };
 
-    // Check npm
-    let npm_result = shell_command("npm", &["--version"]).output();
+        // Check npm
+        let npm_result = shell_command("npm", &["--version"]).output();
 
-    let (npm_installed, npm_version) = match npm_result {
-        Ok(output) if output.status.success() => {
-            let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            (true, Some(version))
-        }
-        _ => (false, None),
-    };
+        let (npm_installed, npm_version) = match npm_result {
+            Ok(output) if output.status.success() => {
+                let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                (true, Some(version))
+            }
+            _ => (false, None),
+        };
 
-    // Check Claude Code
-    let claude_result = shell_command("claude", &["--version"]).output();
+        // Check Claude Code
+        let claude_result = shell_command("claude", &["--version"]).output();
 
-    let (claude_installed, claude_version) = match claude_result {
-        Ok(output) if output.status.success() => {
-            let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            (true, Some(version))
-        }
-        _ => (false, None),
-    };
+        let (claude_installed, claude_version) = match claude_result {
+            Ok(output) if output.status.success() => {
+                let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                (true, Some(version))
+            }
+            _ => (false, None),
+        };
 
-    Ok(SystemStatus {
-        node_installed,
-        node_version,
-        npm_installed,
-        npm_version,
-        claude_installed,
-        claude_version,
+        Ok(SystemStatus {
+            node_installed,
+            node_version,
+            npm_installed,
+            npm_version,
+            claude_installed,
+            claude_version,
+        })
     })
+    .await
 }
 
 #[command]
 pub async fn install_claude_code() -> Result<String, String> {
-    let output = shell_command("npm", &["install", "-g", "@anthropic-ai/claude-code"])
-        .output()
-        .map_err(|e| e.to_string())?;
+    wrap_cmd("install_claude_code", async move {
+        let output = shell_command("npm", &["install", "-g", "@anthropic-ai/claude-code"])
+            .output()
+            .map_err(|e| e.to_string())?;
 
-    if output.status.success() {
-        Ok("Claude Code installed successfully!".to_string())
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).to_string())
-    }
+        if output.status.success() {
+            Ok("Claude Code installed successfully!".to_string())
+        } else {
+            Err(String::from_utf8_lossy(&output.stderr).to_string())
+        }
+    })
+    .await
 }
 
 #[command]
 pub async fn send_notification(title: String, body: String) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || {
-        notify_rust::Notification::new()
-            .summary(&title)
-            .body(&body)
-            .show()
-            .map(|_| ())
-            .map_err(|e| e.to_string())
+    wrap_cmd("send_notification", async move {
+        tokio::task::spawn_blocking(move || {
+            notify_rust::Notification::new()
+                .summary(&title)
+                .body(&body)
+                .show()
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|e| e.to_string())?
     })
     .await
-    .map_err(|e| e.to_string())?
 }
 
 #[command]
 pub async fn open_external_url(url: String) -> Result<(), String> {
-    // Reject null bytes that could confuse shell execution
-    if url.contains('\0') {
-        return Err("Invalid URL".to_string());
-    }
-    // Parse with a proper URL parser to prevent scheme confusion
-    let parsed = url::Url::parse(&url).map_err(|_| "Invalid URL".to_string())?;
-    if parsed.scheme() != "https" && parsed.scheme() != "http" {
-        return Err("Only HTTP and HTTPS URLs are allowed".to_string());
-    }
-    open::that(parsed.as_str()).map_err(|e| e.to_string())
+    wrap_cmd("open_external_url", async move {
+        // Reject null bytes that could confuse shell execution
+        if url.contains('\0') {
+            return Err("Invalid URL".to_string());
+        }
+        // Parse with a proper URL parser to prevent scheme confusion
+        let parsed = url::Url::parse(&url).map_err(|_| "Invalid URL".to_string())?;
+        if parsed.scheme() != "https" && parsed.scheme() != "http" {
+            return Err("Only HTTP and HTTPS URLs are allowed".to_string());
+        }
+        open::that(parsed.as_str()).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[command]
@@ -1636,20 +1657,29 @@ pub async fn save_snippet(
     state: State<'_, AppState>,
     snippet: Snippet,
 ) -> Result<(), String> {
-    let db = state.db.lock().await;
-    db.save_snippet(&snippet)
+    wrap_cmd("save_snippet", async move {
+        let db = state.db.lock().await;
+        db.save_snippet(&snippet)
+    })
+    .await
 }
 
 #[command]
 pub async fn get_snippets(state: State<'_, AppState>) -> Result<Vec<Snippet>, String> {
-    let db = state.db.lock().await;
-    db.get_snippets()
+    wrap_cmd("get_snippets", async move {
+        let db = state.db.lock().await;
+        db.get_snippets()
+    })
+    .await
 }
 
 #[command]
 pub async fn delete_snippet(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    let db = state.db.lock().await;
-    db.delete_snippet(&id)
+    wrap_cmd("delete_snippet", async move {
+        let db = state.db.lock().await;
+        db.delete_snippet(&id)
+    })
+    .await
 }
 
 // Claude Global Configuration (~/.claude/)
@@ -1681,125 +1711,155 @@ const MAX_CLAUDE_SETTINGS_BYTES: u64 = 1024 * 1024;
 
 #[command]
 pub async fn read_claude_settings() -> Result<String, String> {
-    let settings_path = get_claude_dir()?.join("settings.json");
-    if !settings_path.exists() {
-        return Ok("{}".to_string());
-    }
-    let meta = std::fs::metadata(&settings_path)
-        .map_err(|e| format!("Failed to stat settings.json: {}", e))?;
-    if meta.len() > MAX_CLAUDE_SETTINGS_BYTES {
-        return Err(format!(
-            "settings.json is larger than allowed maximum ({} bytes)",
-            MAX_CLAUDE_SETTINGS_BYTES
-        ));
-    }
-    std::fs::read_to_string(&settings_path)
-        .map_err(|e| format!("Failed to read settings.json: {}", e))
+    wrap_cmd("read_claude_settings", async move {
+        let settings_path = get_claude_dir()?.join("settings.json");
+        if !settings_path.exists() {
+            return Ok("{}".to_string());
+        }
+        let meta = std::fs::metadata(&settings_path)
+            .map_err(|e| format!("Failed to stat settings.json: {}", e))?;
+        if meta.len() > MAX_CLAUDE_SETTINGS_BYTES {
+            return Err(format!(
+                "settings.json is larger than allowed maximum ({} bytes)",
+                MAX_CLAUDE_SETTINGS_BYTES
+            ));
+        }
+        std::fs::read_to_string(&settings_path)
+            .map_err(|e| format!("Failed to read settings.json: {}", e))
+    })
+    .await
 }
 
 #[command]
 pub async fn write_claude_settings(content: String) -> Result<(), String> {
-    if content.len() as u64 > MAX_CLAUDE_SETTINGS_BYTES {
-        return Err(format!(
-            "settings content exceeds maximum size ({} bytes)",
-            MAX_CLAUDE_SETTINGS_BYTES
-        ));
-    }
-    // Validate it's valid JSON
-    serde_json::from_str::<serde_json::Value>(&content)
-        .map_err(|e| format!("Invalid JSON: {}", e))?;
-    let claude_dir = get_claude_dir()?;
-    std::fs::create_dir_all(&claude_dir).map_err(|e| e.to_string())?;
-    std::fs::write(claude_dir.join("settings.json"), &content)
-        .map_err(|e| format!("Failed to write settings.json: {}", e))
+    wrap_cmd("write_claude_settings", async move {
+        if content.len() as u64 > MAX_CLAUDE_SETTINGS_BYTES {
+            return Err(format!(
+                "settings content exceeds maximum size ({} bytes)",
+                MAX_CLAUDE_SETTINGS_BYTES
+            ));
+        }
+        // Validate it's valid JSON
+        serde_json::from_str::<serde_json::Value>(&content)
+            .map_err(|e| format!("Invalid JSON: {}", e))?;
+        let claude_dir = get_claude_dir()?;
+        std::fs::create_dir_all(&claude_dir).map_err(|e| e.to_string())?;
+        std::fs::write(claude_dir.join("settings.json"), &content)
+            .map_err(|e| format!("Failed to write settings.json: {}", e))
+    })
+    .await
 }
 
 #[command]
 pub async fn list_claude_agents() -> Result<Vec<String>, String> {
-    let agents_dir = get_claude_dir()?.join("agents");
-    if !agents_dir.exists() {
-        return Ok(vec![]);
-    }
-    let entries = std::fs::read_dir(&agents_dir).map_err(|e| e.to_string())?;
-    let mut names: Vec<String> = entries
-        .flatten()
-        .filter(|e| e.path().is_file())
-        .filter_map(|e| e.file_name().to_str().map(String::from))
-        .collect();
-    names.sort();
-    Ok(names)
+    wrap_cmd("list_claude_agents", async move {
+        let agents_dir = get_claude_dir()?.join("agents");
+        if !agents_dir.exists() {
+            return Ok(vec![]);
+        }
+        let entries = std::fs::read_dir(&agents_dir).map_err(|e| e.to_string())?;
+        let mut names: Vec<String> = entries
+            .flatten()
+            .filter(|e| e.path().is_file())
+            .filter_map(|e| e.file_name().to_str().map(String::from))
+            .collect();
+        names.sort();
+        Ok(names)
+    })
+    .await
 }
 
 #[command]
 pub async fn read_claude_agent(name: String) -> Result<String, String> {
-    validate_filename(&name)?;
-    let path = get_claude_dir()?.join("agents").join(&name);
-    if !path.exists() {
-        return Err(format!("Agent file not found: {}", name));
-    }
-    std::fs::read_to_string(&path).map_err(|e| e.to_string())
+    wrap_cmd("read_claude_agent", async move {
+        validate_filename(&name)?;
+        let path = get_claude_dir()?.join("agents").join(&name);
+        if !path.exists() {
+            return Err(format!("Agent file not found: {}", name));
+        }
+        std::fs::read_to_string(&path).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[command]
 pub async fn write_claude_agent(name: String, content: String) -> Result<(), String> {
-    validate_filename(&name)?;
-    let agents_dir = get_claude_dir()?.join("agents");
-    std::fs::create_dir_all(&agents_dir).map_err(|e| e.to_string())?;
-    std::fs::write(agents_dir.join(&name), &content).map_err(|e| e.to_string())
+    wrap_cmd("write_claude_agent", async move {
+        validate_filename(&name)?;
+        let agents_dir = get_claude_dir()?.join("agents");
+        std::fs::create_dir_all(&agents_dir).map_err(|e| e.to_string())?;
+        std::fs::write(agents_dir.join(&name), &content).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[command]
 pub async fn delete_claude_agent(name: String) -> Result<(), String> {
-    validate_filename(&name)?;
-    let path = get_claude_dir()?.join("agents").join(&name);
-    if path.exists() {
-        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
-    }
-    Ok(())
+    wrap_cmd("delete_claude_agent", async move {
+        validate_filename(&name)?;
+        let path = get_claude_dir()?.join("agents").join(&name);
+        if path.exists() {
+            std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    })
+    .await
 }
 
 #[command]
 pub async fn list_claude_commands() -> Result<Vec<String>, String> {
-    let commands_dir = get_claude_dir()?.join("commands");
-    if !commands_dir.exists() {
-        return Ok(vec![]);
-    }
-    let entries = std::fs::read_dir(&commands_dir).map_err(|e| e.to_string())?;
-    let mut names: Vec<String> = entries
-        .flatten()
-        .filter(|e| e.path().is_file())
-        .filter_map(|e| e.file_name().to_str().map(String::from))
-        .collect();
-    names.sort();
-    Ok(names)
+    wrap_cmd("list_claude_commands", async move {
+        let commands_dir = get_claude_dir()?.join("commands");
+        if !commands_dir.exists() {
+            return Ok(vec![]);
+        }
+        let entries = std::fs::read_dir(&commands_dir).map_err(|e| e.to_string())?;
+        let mut names: Vec<String> = entries
+            .flatten()
+            .filter(|e| e.path().is_file())
+            .filter_map(|e| e.file_name().to_str().map(String::from))
+            .collect();
+        names.sort();
+        Ok(names)
+    })
+    .await
 }
 
 #[command]
 pub async fn read_claude_command(name: String) -> Result<String, String> {
-    validate_filename(&name)?;
-    let path = get_claude_dir()?.join("commands").join(&name);
-    if !path.exists() {
-        return Err(format!("Command file not found: {}", name));
-    }
-    std::fs::read_to_string(&path).map_err(|e| e.to_string())
+    wrap_cmd("read_claude_command", async move {
+        validate_filename(&name)?;
+        let path = get_claude_dir()?.join("commands").join(&name);
+        if !path.exists() {
+            return Err(format!("Command file not found: {}", name));
+        }
+        std::fs::read_to_string(&path).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[command]
 pub async fn write_claude_command(name: String, content: String) -> Result<(), String> {
-    validate_filename(&name)?;
-    let commands_dir = get_claude_dir()?.join("commands");
-    std::fs::create_dir_all(&commands_dir).map_err(|e| e.to_string())?;
-    std::fs::write(commands_dir.join(&name), &content).map_err(|e| e.to_string())
+    wrap_cmd("write_claude_command", async move {
+        validate_filename(&name)?;
+        let commands_dir = get_claude_dir()?.join("commands");
+        std::fs::create_dir_all(&commands_dir).map_err(|e| e.to_string())?;
+        std::fs::write(commands_dir.join(&name), &content).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[command]
 pub async fn delete_claude_command(name: String) -> Result<(), String> {
-    validate_filename(&name)?;
-    let path = get_claude_dir()?.join("commands").join(&name);
-    if path.exists() {
-        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
-    }
-    Ok(())
+    wrap_cmd("delete_claude_command", async move {
+        validate_filename(&name)?;
+        let path = get_claude_dir()?.join("commands").join(&name);
+        if path.exists() {
+            std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    })
+    .await
 }
 
 // Telemetry commands
