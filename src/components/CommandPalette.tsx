@@ -18,6 +18,13 @@ import {
   Plus,
   Copy,
   Send,
+  Brain,
+  Clock,
+  Wrench,
+  Users,
+  GitBranch,
+  SplitSquareHorizontal,
+  X,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -128,7 +135,47 @@ export function CommandPalette() {
         { label: 'Open Settings', description: 'Open application settings', icon: Settings, shortcut: 'Ctrl+,', action: () => { replaceModal('settings'); } },
         { label: 'Toggle Grid View', description: 'Switch between tab and grid view', icon: LayoutGrid, shortcut: 'Ctrl+G', action: () => { useAppStore.getState().toggleGridMode(); closeModal(); } },
         { label: 'Toggle Hints Panel', description: 'Show or hide Claude Code hints', icon: Lightbulb, shortcut: 'F1', action: () => { useAppStore.getState().toggleHints(); closeModal(); } },
-        { label: 'Toggle File Changes', description: 'Show or hide the file changes panel', icon: FileCode, shortcut: 'F2', action: () => { useAppStore.getState().toggleChanges(); closeModal(); } },
+        { label: 'Toggle File Changes', description: 'Show or hide the file changes panel', icon: FileCode, action: () => { useAppStore.getState().toggleChanges(); closeModal(); } },
+        { label: 'Toggle Agent Teams', description: 'Show or hide the agent orchestration panel', icon: Users, action: () => { useAppStore.getState().toggleOrchestration(); closeModal(); } },
+        { label: 'Open Memory Editor', description: 'Edit Claude memory and CLAUDE.md files', icon: Brain, action: () => { replaceModal('memoryEditor'); } },
+        { label: 'Open Session Timeline', description: 'View the session timeline and history', icon: Clock, action: () => { replaceModal('sessionTimeline'); } },
+        { label: 'Open Claude Config', description: 'Configure Claude Code settings and agents', icon: Wrench, action: () => { replaceModal('claudeConfig'); } },
+        { label: 'Open Global Search', description: 'Search across all file contents', icon: Search, shortcut: 'Ctrl+Shift+F', action: () => { replaceModal('globalSearch'); } },
+        { label: 'Open Worktree Manager', description: 'Manage git worktrees for the active terminal', icon: GitBranch, shortcut: 'Ctrl+Shift+W', action: () => {
+          const activeId = useTerminalStore.getState().activeTerminalId;
+          if (activeId) {
+            const gitInfo = useTerminalStore.getState().gitInfoCache.get(activeId);
+            if (gitInfo?.is_git_repo) {
+              const terminal = useTerminalStore.getState().terminals.get(activeId);
+              const repoPath = gitInfo.is_worktree && gitInfo.main_repo_path
+                ? gitInfo.main_repo_path
+                : terminal?.config.working_directory || '';
+              replaceModal('worktree', { repoPath });
+              return;
+            }
+          }
+          closeModal();
+        } },
+        { label: 'Split View', description: 'Split the current terminal with another', icon: SplitSquareHorizontal, shortcut: 'Ctrl+\\', action: () => {
+          const { splitMode, clearSplit, setSplitTerminals, setSplitMode } = useAppStore.getState();
+          if (splitMode) {
+            clearSplit();
+          } else {
+            const terminals = useTerminalStore.getState().terminals;
+            const activeId = useTerminalStore.getState().activeTerminalId;
+            const terminalIds = Array.from(terminals.keys());
+            if (terminalIds.length >= 2 && activeId) {
+              const other = terminalIds.find(id => id !== activeId);
+              if (other) { setSplitTerminals([activeId, other]); setSplitMode(true); }
+            }
+          }
+          closeModal();
+        } },
+        { label: 'Close Active Terminal', description: 'Close the currently active terminal', icon: X, shortcut: 'Ctrl+W', action: () => {
+          const activeId = useTerminalStore.getState().activeTerminalId;
+          if (activeId) useTerminalStore.getState().closeTerminal(activeId);
+          closeModal();
+        } },
         { label: 'Manage Profiles', description: 'Open profile management', icon: User, action: () => { replaceModal('profile'); } },
         { label: 'Workspaces', description: 'Open workspace manager', icon: FolderOpen, action: () => { replaceModal('workspace'); } },
         { label: 'Snippets', description: 'Open snippet manager', icon: Scissors, shortcut: 'Ctrl+Shift+S', action: () => { replaceModal('snippets'); } },
@@ -334,6 +381,7 @@ export function CommandPalette() {
             <span><kbd className="px-1 py-0.5 bg-elevation-2 rounded border border-border font-mono">↑↓</kbd> navigate</span>
             <span><kbd className="px-1 py-0.5 bg-elevation-2 rounded border border-border font-mono">↵</kbd> select</span>
             <span><kbd className="px-1 py-0.5 bg-elevation-2 rounded border border-border font-mono">esc</kbd> close</span>
+            <span className="ml-auto"><kbd className="px-1 py-0.5 bg-elevation-2 rounded border border-border font-mono">⌘K</kbd> to open</span>
           </div>
         </div>
       </motion.div>

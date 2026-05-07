@@ -32,8 +32,8 @@ export function useKeyboardShortcuts() {
         useAppStore.getState().openModal('newTerminal');
       }
 
-      // Command Palette: Ctrl+P
-      if (ctrl && e.key === 'p') {
+      // Command Palette: Ctrl+P or Ctrl+K / Cmd+K
+      if ((ctrl && e.key === 'p') || (ctrl && e.key === 'k')) {
         e.preventDefault();
         const state = useAppStore.getState();
         if (state.activeModal === 'commandPalette') {
@@ -119,49 +119,6 @@ export function useKeyboardShortcuts() {
       if (e.key === 'F1') {
         e.preventDefault();
         useAppStore.getState().toggleHints();
-      }
-
-      if (e.key === 'F2') {
-        e.preventDefault();
-        useAppStore.getState().toggleChanges();
-      }
-
-      if (e.key === 'F4') {
-        e.preventDefault();
-        useAppStore.getState().toggleOrchestration();
-      }
-
-      // Claude Config: F6
-      if (e.key === 'F6') {
-        e.preventDefault();
-        const state = useAppStore.getState();
-        if (state.activeModal === 'claudeConfig') {
-          state.closeModal();
-        } else {
-          state.openModal('claudeConfig');
-        }
-      }
-
-      // Session Timeline: F7
-      if (e.key === 'F7') {
-        e.preventDefault();
-        const state = useAppStore.getState();
-        if (state.activeModal === 'sessionTimeline') {
-          state.closeModal();
-        } else {
-          state.openModal('sessionTimeline');
-        }
-      }
-
-      // Memory Editor: F8
-      if (e.key === 'F8') {
-        e.preventDefault();
-        const state = useAppStore.getState();
-        if (state.activeModal === 'memoryEditor') {
-          state.closeModal();
-        } else {
-          state.openModal('memoryEditor');
-        }
       }
 
       // Toggle Grid Mode: Ctrl+G
