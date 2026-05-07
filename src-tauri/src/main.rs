@@ -182,10 +182,10 @@ fn main() {
                             eprintln!("Failed to save last session on exit: {}", e);
                         }
                     }
-                    // Close all terminals (drops PTY resources, reader threads clean up async)
+                    // Gracefully shut down all PTY children: SIGTERM → 2 s wait → SIGKILL
                     {
                         let mut manager = terminals.lock().await;
-                        manager.close_all();
+                        manager.shutdown_all_graceful();
                     }
                 });
             }

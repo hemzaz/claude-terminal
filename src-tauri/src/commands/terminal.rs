@@ -130,19 +130,8 @@ pub async fn write_to_terminal(
                 MAX_TERMINAL_WRITE_SIZE
             ));
         }
-        // Two-phase lock: grab the per-terminal writer Arc while holding the
-        // TerminalManager mutex, then release the manager lock so concurrent
-        // writes to *different* terminals don't block each other.
-        let writer = {
-            let terminals = state.terminals.lock().await;
-            terminals.get_writer(&id)
-                .ok_or_else(|| "Terminal not found".to_string())?
-        };
-        let mut w = writer.lock()
-            .map_err(|_| "Terminal writer mutex poisoned".to_string())?;
-        use std::io::Write as _;
-        w.write_all(&data).map_err(|e| format!("Failed to write: {}", e))?;
-        w.flush().map_err(|e| format!("Failed to flush: {}", e))
+        let terminals = state.terminals.lock().await;
+        terminals.write(&id, &data)
     })
     .await
 }
