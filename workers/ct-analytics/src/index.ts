@@ -417,6 +417,14 @@ async function handleStatsHistory(url: URL, env: Env): Promise<Response> {
 }
 
 export default {
+  async scheduled(_controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
+    try {
+      await env.DB.prepare("DELETE FROM errors WHERE ts < datetime('now', '-90 days')").run();
+    } catch (err) {
+      console.error('[scheduled] error cleanup failed:', err);
+    }
+  },
+
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
