@@ -74,6 +74,9 @@ jobs:
             args: '--target x86_64-apple-darwin'
 
     runs-on: ${{ matrix.platform }}
+    # Lifted to job-level so step `if:` conditions can read it (step env isn't available there).
+    env:
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -98,6 +101,29 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install Azure Trusted Signing client (Windows)
+        if: matrix.platform == 'windows-latest' && env.AZURE_TENANT_ID != ''
+        shell: pwsh
+        run: |
+          $dlibDir = Join-Path $env:RUNNER_TEMP 'TrustedSigningClient'
+          New-Item -ItemType Directory -Force -Path $dlibDir | Out-Null
+          Invoke-WebRequest -Uri 'https://www.nuget.org/api/v2/package/Microsoft.Trusted.Signing.Client' -OutFile (Join-Path $dlibDir 'tsc.zip')
+          Expand-Archive -Path (Join-Path $dlibDir 'tsc.zip') -DestinationPath $dlibDir -Force
+          $dlib = Get-ChildItem -Path $dlibDir -Recurse -Filter 'Azure.CodeSigning.Dlib.dll' | Where-Object { $_.FullName -like '*x64*' } | Select-Object -First 1
+          if (-not $dlib) { throw 'Azure.CodeSigning.Dlib.dll (x64) not found' }
+          $metadata = Join-Path $env:RUNNER_TEMP 'metadata.json'
+          @{
+            Endpoint              = '${{ vars.TRUSTED_SIGNING_ENDPOINT }}'
+            CodeSigningAccountName = '${{ vars.TRUSTED_SIGNING_ACCOUNT }}'
+            CertificateProfileName = '${{ vars.TRUSTED_SIGNING_PROFILE }}'
+          } | ConvertTo-Json | Set-Content -Path $metadata -Encoding UTF8
+          "TRUSTED_SIGNING_DLIB=$($dlib.FullName)"     | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding UTF8
+          "TRUSTED_SIGNING_METADATA=$metadata"         | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding UTF8
+          "TRUSTED_SIGNING_ENABLED=true"               | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding UTF8
+          # signtool from the latest installed Windows SDK
+          $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter 'signtool.exe' -ErrorAction SilentlyContinue | Where-Object { $_.FullName -like '*\x64\*' } | Sort-Object FullName -Descending | Select-Object -First 1
+          if ($signtool) { "SIGNTOOL_PATH=$($signtool.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding UTF8 }
+
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa # v0.6.1
         env:
@@ -105,6 +131,10 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           CT_INGEST_TOKEN: ${{ secrets.CT_INGEST_TOKEN }}
+          # Azure auth for the Trusted Signing DLib (DefaultAzureCredential picks these up).
+          # AZURE_TENANT_ID inherited from job-level env. sign-windows.ps1 no-ops when TRUSTED_SIGNING_ENABLED is unset.
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
         with:
           releaseId: ${{ needs.create-release.outputs.release_id }}
           updaterJsonKeepUniversal: true

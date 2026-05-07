@@ -1,5 +1,13 @@
 [
   {
+    "version": "1.20.8",
+    "date": "2026-05-07",
+    "features": [
+      { "title": "Crash & error reporting", "description": "Unhandled errors and panics are now sent to ClaudeTerminal's analytics worker so we can fix bugs faster. Windows usernames are scrubbed before sending. New 'Send error reports' toggle in Settings (default ON) lets you opt out anytime." },
+      { "title": "Maintenance", "description": "Internal release-pipeline scaffolding for future Authenticode-signed Windows installers via Azure Trusted Signing. No user-visible change yet." }
+    ]
+  },
+  {
     "version": "1.20.7",
     "date": "2026-05-04",
     "features": [
