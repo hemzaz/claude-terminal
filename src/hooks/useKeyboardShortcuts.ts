@@ -1,6 +1,10 @@
 import { useEffect, useRef } from 'react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { exit } from '@tauri-apps/plugin-process';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
+
+const isMac = navigator.platform.toUpperCase().includes('MAC');
 
 export function useKeyboardShortcuts() {
   // Use refs for values that change frequently to avoid re-registering the listener
@@ -25,23 +29,73 @@ export function useKeyboardShortcuts() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const ctrl = e.ctrlKey || e.metaKey;
+      const meta = e.metaKey;
       const shift = e.shiftKey;
+
+      // ── macOS-only Cmd shortcuts ───────────────────────────────────────────
+
+      // Cmd+Q: quit application (macOS muscle-memory; Ctrl+Q intentionally unbound)
+      if (isMac && meta && !shift && e.key === 'q') {
+        e.preventDefault();
+        exit(0);
+        return;
+      }
+
+      // Cmd+M: minimize window (matches macOS system convention)
+      if (isMac && meta && !shift && e.key === 'm') {
+        e.preventDefault();
+        getCurrentWindow().minimize();
+        return;
+      }
+
+      // Cmd+Shift+W (macOS): close all terminals currently in grid view.
+      // Checked before Ctrl+Shift+W → worktree-modal so Cmd+Shift+W on Mac
+      // does not accidentally trigger the worktree handler.
+      if (isMac && meta && shift && e.key === 'W') {
+        e.preventDefault();
+        const { gridTerminalIds, clearGrid } = useAppStore.getState();
+        const { closeTerminal } = useTerminalStore.getState();
+        const ids = [...gridTerminalIds];
+        clearGrid();
+        ids.forEach((id) => closeTerminal(id));
+        return;
+      }
+
+      // Cmd+Shift+T (macOS): reopen most-recently-closed terminal.
+      // TODO: implement once Issue #15 (soft-delete closed terminals) ships.
+      if (isMac && meta && shift && e.key === 'T') {
+        e.preventDefault();
+        return;
+      }
+
+      // ── Cross-platform shortcuts ───────────────────────────────────────────
 
       if (ctrl && shift && e.key === 'N') {
         e.preventDefault();
-        useAppStore.getState().openNewTerminalModal();
+        useAppStore.getState().openModal('newTerminal');
       }
 
-      // Command Palette: Ctrl+P
-      if (ctrl && e.key === 'p') {
+      // Cmd+T / Ctrl+T: open new terminal (matches browser/terminal convention)
+      if (ctrl && !shift && e.key === 't') {
         e.preventDefault();
-        useAppStore.getState().toggleCommandPalette();
+        useAppStore.getState().openModal('newTerminal');
+      }
+
+      // Command Palette: Ctrl+P or Ctrl+K / Cmd+K
+      if ((ctrl && e.key === 'p') || (ctrl && e.key === 'k')) {
+        e.preventDefault();
+        const state = useAppStore.getState();
+        if (state.activeModal === 'commandPalette') {
+          state.closeModal();
+        } else {
+          state.openModal('commandPalette');
+        }
       }
 
       // Snippets: Ctrl+Shift+S
       if (ctrl && shift && e.key === 'S') {
         e.preventDefault();
-        useAppStore.getState().openSnippetsModal();
+        useAppStore.getState().openModal('snippets');
       }
 
       // Split View: Ctrl+\
@@ -67,7 +121,12 @@ export function useKeyboardShortcuts() {
       // Global file/content search (VS Code style): Ctrl+Shift+F
       if (ctrl && shift && e.key === 'F') {
         e.preventDefault();
-        useAppStore.getState().toggleGlobalSearch();
+        const state = useAppStore.getState();
+        if (state.activeModal === 'globalSearch') {
+          state.closeModal();
+        } else {
+          state.openModal('globalSearch');
+        }
       }
 
       if (ctrl && e.key === 'b') {
@@ -75,6 +134,7 @@ export function useKeyboardShortcuts() {
         useAppStore.getState().toggleSidebar();
       }
 
+      // Cmd+W / Ctrl+W: close active terminal
       if (ctrl && e.key === 'w') {
         e.preventDefault();
         const activeId = activeIdRef.current;
@@ -101,52 +161,15 @@ export function useKeyboardShortcuts() {
         }
       }
 
+      // Cmd+, / Ctrl+,: Settings
       if (ctrl && e.key === ',') {
         e.preventDefault();
-        useAppStore.getState().openSettings();
+        useAppStore.getState().openModal('settings');
       }
 
       if (e.key === 'F1') {
         e.preventDefault();
         useAppStore.getState().toggleHints();
-      }
-
-      if (e.key === 'F2') {
-        e.preventDefault();
-        useAppStore.getState().toggleChanges();
-      }
-
-      if (e.key === 'F4') {
-        e.preventDefault();
-        useAppStore.getState().toggleOrchestration();
-      }
-
-      // Claude Config: F6
-      if (e.key === 'F6') {
-        e.preventDefault();
-        const state = useAppStore.getState();
-        if (state.claudeConfigOpen) {
-          state.closeClaudeConfig();
-        } else {
-          state.openClaudeConfig();
-        }
-      }
-
-      // Session Timeline: F7
-      if (e.key === 'F7') {
-        e.preventDefault();
-        useAppStore.getState().toggleSessionTimeline();
-      }
-
-      // Memory Editor: F8
-      if (e.key === 'F8') {
-        e.preventDefault();
-        const state = useAppStore.getState();
-        if (state.memoryEditorOpen) {
-          state.closeMemoryEditor();
-        } else {
-          state.openMemoryEditor();
-        }
       }
 
       // Toggle Grid Mode: Ctrl+G
@@ -155,7 +178,7 @@ export function useKeyboardShortcuts() {
         useAppStore.getState().toggleGridMode();
       }
 
-      // Worktree Modal: Ctrl+Shift+W
+      // Worktree Modal: Ctrl+Shift+W (on macOS, Cmd+Shift+W is handled above)
       if (ctrl && shift && e.key === 'W') {
         e.preventDefault();
         const activeId = activeIdRef.current;
@@ -166,7 +189,7 @@ export function useKeyboardShortcuts() {
             const repoPath = gitInfo.is_worktree && gitInfo.main_repo_path
               ? gitInfo.main_repo_path
               : terminal?.config.working_directory || '';
-            useAppStore.getState().openWorktreeModal(repoPath);
+            useAppStore.getState().openModal('worktree', { repoPath });
           }
         }
       }
