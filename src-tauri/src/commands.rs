@@ -580,6 +580,85 @@ pub async fn open_external_url(url: String) -> Result<(), String> {
     .await
 }
 
+/// Walks up from the running executable path to find the enclosing `.app` bundle on macOS.
+#[cfg(target_os = "macos")]
+fn get_macos_bundle_path() -> Result<std::path::PathBuf, String> {
+    let exe = std::env::current_exe().map_err(|e| format!("cannot resolve executable: {e}"))?;
+    let mut path: &std::path::Path = exe.as_path();
+    loop {
+        if path
+            .file_name()
+            .map(|n| n.to_string_lossy().ends_with(".app"))
+            .unwrap_or(false)
+        {
+            return Ok(path.to_path_buf());
+        }
+        match path.parent() {
+            Some(parent) => path = parent,
+            None => {
+                return Err(
+                    "Could not locate .app bundle — quarantine check skipped".to_string(),
+                )
+            }
+        }
+    }
+}
+
+/// Returns `true` if the running `.app` bundle carries the `com.apple.quarantine` xattr.
+/// Always returns `false` on non-macOS platforms.
+#[command]
+pub async fn check_quarantine() -> Result<bool, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let bundle_path = match get_macos_bundle_path() {
+            Ok(p) => p,
+            // If we can't determine the bundle path (e.g. running from `cargo tauri dev`),
+            // treat as not quarantined so the wizard doesn't block development.
+            Err(_) => return Ok(false),
+        };
+        let output = std::process::Command::new("xattr")
+            .args([
+                "-p",
+                "com.apple.quarantine",
+                bundle_path.to_string_lossy().as_ref(),
+            ])
+            .output()
+            .map_err(|e| format!("xattr check failed: {e}"))?;
+        Ok(output.status.success())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(false)
+    }
+}
+
+/// Removes the `com.apple.quarantine` xattr from the running `.app` bundle.
+/// No-op on non-macOS platforms.
+#[command]
+pub async fn remove_quarantine() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let bundle_path = get_macos_bundle_path()?;
+        let output = std::process::Command::new("xattr")
+            .args([
+                "-d",
+                "com.apple.quarantine",
+                bundle_path.to_string_lossy().as_ref(),
+            ])
+            .output()
+            .map_err(|e| format!("xattr remove failed: {e}"))?;
+        if output.status.success() {
+            Ok(())
+        } else {
+            Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(())
+    }
+}
+
 #[command]
 pub async fn get_workspaces(
     state: State<'_, AppState>,

@@ -150,6 +150,8 @@ fn main() {
             commands::search_in_files,
             commands::report_error,
             commands::set_error_reporting_enabled,
+            commands::check_quarantine,
+            commands::remove_quarantine,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
