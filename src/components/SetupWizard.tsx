@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle, XCircle, Download, ExternalLink, Loader2, Terminal, Box, RefreshCw } from 'lucide-react';
+import { CheckCircle, XCircle, Download, ExternalLink, Loader2, Terminal, Box, RefreshCw, AlertTriangle, ShieldOff } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 
 interface SystemStatus {
@@ -21,8 +21,32 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   const [isChecking, setIsChecking] = useState(true);
   const [isInstalling, setIsInstalling] = useState(false);
   const [installError, setInstallError] = useState<string | null>(null);
+  const [isQuarantined, setIsQuarantined] = useState(false);
+  const [isFixingQuarantine, setIsFixingQuarantine] = useState(false);
+  const [quarantineError, setQuarantineError] = useState<string | null>(null);
 
   const mountedRef = useRef(true);
+
+  const checkQuarantine = async () => {
+    try {
+      const quarantined = await invoke<boolean>('check_quarantine');
+      if (mountedRef.current) setIsQuarantined(quarantined);
+    } catch {
+      // Non-fatal: quarantine detection failure doesn't block setup
+    }
+  };
+
+  const handleFixQuarantine = async () => {
+    setIsFixingQuarantine(true);
+    setQuarantineError(null);
+    try {
+      await invoke('remove_quarantine');
+      if (mountedRef.current) setIsQuarantined(false);
+    } catch (error) {
+      if (mountedRef.current) setQuarantineError(String(error));
+    }
+    if (mountedRef.current) setIsFixingQuarantine(false);
+  };
 
   const checkRequirements = async () => {
     setIsChecking(true);
@@ -44,6 +68,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
 
   useEffect(() => {
     checkRequirements();
+    checkQuarantine();
     return () => { mountedRef.current = false; };
   }, []);
 
@@ -112,6 +137,39 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
 
         {/* Content */}
         <div className="p-6">
+          {/* macOS quarantine warning — only shown when the .app bundle is quarantined */}
+          {isQuarantined && (
+            <div className="mb-4 p-4 rounded-md ring-1 bg-amber-500/10 ring-amber-500/30">
+              <div className="flex items-start gap-3">
+                <AlertTriangle size={18} className="text-amber-400 mt-0.5 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-amber-300 text-[13px] font-medium">macOS quarantine detected</p>
+                  <p className="text-amber-300/70 text-[12px] mt-0.5">
+                    This app was quarantined by Gatekeeper after download. Some features may be
+                    blocked until the quarantine attribute is removed.
+                  </p>
+                  {quarantineError && (
+                    <p className="text-error text-[11px] mt-1.5">
+                      <strong>Fix failed:</strong> {quarantineError}
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={handleFixQuarantine}
+                  disabled={isFixingQuarantine}
+                  className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-black h-8 px-3 rounded-md text-[12px] font-medium transition-colors shrink-0"
+                >
+                  {isFixingQuarantine ? (
+                    <Loader2 size={13} className="animate-spin" />
+                  ) : (
+                    <ShieldOff size={13} />
+                  )}
+                  {isFixingQuarantine ? 'Fixing…' : 'Fix'}
+                </button>
+              </div>
+            </div>
+          )}
+
           {isChecking ? (
             <div className="flex flex-col items-center py-8">
               <Loader2 size={32} className="text-text-secondary animate-spin mb-4" />
