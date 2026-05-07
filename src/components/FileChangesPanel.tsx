@@ -72,7 +72,7 @@ export function FileChangesPanel() {
   const terminals = useTerminalStore((s) => s.terminals);
   const gitInfoCache = useTerminalStore((s) => s.gitInfoCache);
   const changesRefreshTrigger = useAppStore((s) => s.changesRefreshTrigger);
-  const openWorktreeModal = useAppStore((s) => s.openWorktreeModal);
+  const openModal = useAppStore((s) => s.openModal);
   const showGitPanel = useAppStore((s) => s.showGitPanel);
   const setPinnedRepoPath = useAppStore((s) => s.setPinnedRepoPath);
   const repositoriesHeightRatio = useAppStore((s) => s.repositoriesHeightRatio);
@@ -460,7 +460,7 @@ export function FileChangesPanel() {
               Worktree of {activeGitInfo.main_repo_path.replace(/^.*[\\/]/, '')}
             </span>
             <button
-              onClick={() => openWorktreeModal(activeGitInfo.main_repo_path!)}
+              onClick={() => openModal('worktree', { repoPath: activeGitInfo.main_repo_path! })}
               className="text-accent-primary text-[11px] hover:text-accent-secondary transition-colors"
             >
               Manage

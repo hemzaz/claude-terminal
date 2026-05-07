@@ -153,7 +153,7 @@ const TerminalCell = memo(function TerminalCell({ terminalId, index, isFocused, 
 
 function AddTerminalCell() {
   const { terminals } = useTerminalStore();
-  const { gridTerminalIds, openNewTerminalModal, addToGrid } = useAppStore();
+  const { gridTerminalIds, openModal, addToGrid } = useAppStore();
   const [showPicker, setShowPicker] = useState(false);
   const [dropOver, setDropOver] = useState(false);
 
@@ -242,7 +242,7 @@ function AddTerminalCell() {
               <div className="border-t border-border mt-2 pt-2">
                 <button
                   onClick={() => {
-                    openNewTerminalModal();
+                    openModal('newTerminal');
                     setShowPicker(false);
                   }}
                   className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent-primary/10 text-accent-primary text-[12px]"

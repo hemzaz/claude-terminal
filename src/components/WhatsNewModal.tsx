@@ -25,7 +25,7 @@ function compareVersions(a: string, b: string): number {
 }
 
 export function WhatsNewModal() {
-  const { closeWhatsNew, lastSeenVersion, setLastSeenVersion } = useAppStore();
+  const { closeModal, lastSeenVersion, setLastSeenVersion } = useAppStore();
 
   const entries = (changelog as ChangelogEntry[]).filter((entry) => {
     if (!lastSeenVersion) return true;
@@ -37,7 +37,7 @@ export function WhatsNewModal() {
     if (latest) {
       setLastSeenVersion(latest);
     }
-    closeWhatsNew();
+    closeModal();
   };
 
   return (

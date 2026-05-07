@@ -24,7 +24,7 @@ const isMac = navigator.platform.toUpperCase().includes('MAC');
 
 export function TerminalTabs() {
   const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, unreadTerminalIds, gitInfoCache, reorderTerminals, scriptChildren, closeScript } = useTerminalStore();
-  const { openNewTerminalModal, gridMode, toggleGridMode, addToGrid, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, setSplitTerminals, setSplitMode, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree } = useAppStore();
+  const { openModal, gridMode, toggleGridMode, addToGrid, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, setSplitTerminals, setSplitMode, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree } = useAppStore();
 
   // Selecting a terminal clears the file-tab focus (so terminal view shows),
   // selecting a file clears the terminal focus-visual intent.
@@ -48,7 +48,7 @@ export function TerminalTabs() {
   );
 
   const handleNewTab = () => {
-    openNewTerminalModal();
+    openModal('newTerminal');
   };
 
   const handleAddToGrid = (terminalId: string) => {

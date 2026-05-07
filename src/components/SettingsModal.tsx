@@ -17,7 +17,7 @@ interface UpdateCheckResult {
 }
 
 export function SettingsModal() {
-  const { closeSettings, defaultClaudeArgs, setDefaultClaudeArgs, notifyOnFinish, setNotifyOnFinish, restoreSession, setRestoreSession, telemetryEnabled, setTelemetryEnabled, errorReportingEnabled, setErrorReportingEnabled, showGitPanel, setShowGitPanel, showFileTree, setShowFileTree, macUpdateSource, setMacUpdateSource } = useAppStore();
+  const { closeModal, defaultClaudeArgs, setDefaultClaudeArgs, notifyOnFinish, setNotifyOnFinish, restoreSession, setRestoreSession, telemetryEnabled, setTelemetryEnabled, errorReportingEnabled, setErrorReportingEnabled, showGitPanel, setShowGitPanel, showFileTree, setShowFileTree, macUpdateSource, setMacUpdateSource } = useAppStore();
   const homebrewManaged = isMac && macUpdateSource === 'homebrew';
   const [claudeVersion, setClaudeVersion] = useState<string>('');
   const [latestVersion, setLatestVersion] = useState<string>('');
@@ -116,7 +116,7 @@ export function SettingsModal() {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
       className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
-      onDoubleClick={closeSettings}
+      onDoubleClick={closeModal}
     >
       <motion.div
         initial={{ opacity: 0 }}
@@ -130,7 +130,7 @@ export function SettingsModal() {
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h2 className="text-text-primary text-[14px] font-semibold">Settings</h2>
           <button
-            onClick={closeSettings}
+            onClick={closeModal}
             className="p-1 rounded hover:bg-white/[0.06] text-text-tertiary transition-colors"
           >
             <X size={16} />

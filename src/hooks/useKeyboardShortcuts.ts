@@ -29,19 +29,24 @@ export function useKeyboardShortcuts() {
 
       if (ctrl && shift && e.key === 'N') {
         e.preventDefault();
-        useAppStore.getState().openNewTerminalModal();
+        useAppStore.getState().openModal('newTerminal');
       }
 
       // Command Palette: Ctrl+P
       if (ctrl && e.key === 'p') {
         e.preventDefault();
-        useAppStore.getState().toggleCommandPalette();
+        const state = useAppStore.getState();
+        if (state.activeModal === 'commandPalette') {
+          state.closeModal();
+        } else {
+          state.openModal('commandPalette');
+        }
       }
 
       // Snippets: Ctrl+Shift+S
       if (ctrl && shift && e.key === 'S') {
         e.preventDefault();
-        useAppStore.getState().openSnippetsModal();
+        useAppStore.getState().openModal('snippets');
       }
 
       // Split View: Ctrl+\
@@ -67,7 +72,12 @@ export function useKeyboardShortcuts() {
       // Global file/content search (VS Code style): Ctrl+Shift+F
       if (ctrl && shift && e.key === 'F') {
         e.preventDefault();
-        useAppStore.getState().toggleGlobalSearch();
+        const state = useAppStore.getState();
+        if (state.activeModal === 'globalSearch') {
+          state.closeModal();
+        } else {
+          state.openModal('globalSearch');
+        }
       }
 
       if (ctrl && e.key === 'b') {
@@ -103,7 +113,7 @@ export function useKeyboardShortcuts() {
 
       if (ctrl && e.key === ',') {
         e.preventDefault();
-        useAppStore.getState().openSettings();
+        useAppStore.getState().openModal('settings');
       }
 
       if (e.key === 'F1') {
@@ -125,27 +135,32 @@ export function useKeyboardShortcuts() {
       if (e.key === 'F6') {
         e.preventDefault();
         const state = useAppStore.getState();
-        if (state.claudeConfigOpen) {
-          state.closeClaudeConfig();
+        if (state.activeModal === 'claudeConfig') {
+          state.closeModal();
         } else {
-          state.openClaudeConfig();
+          state.openModal('claudeConfig');
         }
       }
 
       // Session Timeline: F7
       if (e.key === 'F7') {
         e.preventDefault();
-        useAppStore.getState().toggleSessionTimeline();
+        const state = useAppStore.getState();
+        if (state.activeModal === 'sessionTimeline') {
+          state.closeModal();
+        } else {
+          state.openModal('sessionTimeline');
+        }
       }
 
       // Memory Editor: F8
       if (e.key === 'F8') {
         e.preventDefault();
         const state = useAppStore.getState();
-        if (state.memoryEditorOpen) {
-          state.closeMemoryEditor();
+        if (state.activeModal === 'memoryEditor') {
+          state.closeModal();
         } else {
-          state.openMemoryEditor();
+          state.openModal('memoryEditor');
         }
       }
 
@@ -166,7 +181,7 @@ export function useKeyboardShortcuts() {
             const repoPath = gitInfo.is_worktree && gitInfo.main_repo_path
               ? gitInfo.main_repo_path
               : terminal?.config.working_directory || '';
-            useAppStore.getState().openWorktreeModal(repoPath);
+            useAppStore.getState().openModal('worktree', { repoPath });
           }
         }
       }

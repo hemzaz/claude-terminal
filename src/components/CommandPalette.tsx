@@ -74,7 +74,7 @@ function fuzzyMatch(text: string, query: string): { matches: boolean; score: num
 }
 
 export function CommandPalette() {
-  const { closeCommandPalette } = useAppStore();
+  const { closeModal, replaceModal } = useAppStore();
   const { terminals, activeTerminalId, setActiveTerminal, writeToTerminal } = useTerminalStore();
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -115,7 +115,7 @@ export function CommandPalette() {
           description: `${config.working_directory} (${config.status})`,
           category: 'Terminals',
           icon: Terminal,
-          action: () => { setActiveTerminal(config.id); closeCommandPalette(); },
+          action: () => { setActiveTerminal(config.id); closeModal(); },
         });
       });
     }
@@ -123,16 +123,16 @@ export function CommandPalette() {
     // Actions
     if (prefixMode === 'all' || prefixMode === 'commands') {
       const actions: { label: string; description: string; icon: LucideIcon; shortcut?: string; action: () => void }[] = [
-        { label: 'New Terminal', description: 'Create a new terminal instance', icon: Plus, shortcut: 'Ctrl+Shift+N', action: () => { useAppStore.getState().openNewTerminalModal(); closeCommandPalette(); } },
-        { label: 'Toggle Sidebar', description: 'Show or hide the sidebar', icon: PanelLeft, shortcut: 'Ctrl+B', action: () => { useAppStore.getState().toggleSidebar(); closeCommandPalette(); } },
-        { label: 'Open Settings', description: 'Open application settings', icon: Settings, shortcut: 'Ctrl+,', action: () => { useAppStore.getState().openSettings(); closeCommandPalette(); } },
-        { label: 'Toggle Grid View', description: 'Switch between tab and grid view', icon: LayoutGrid, shortcut: 'Ctrl+G', action: () => { useAppStore.getState().toggleGridMode(); closeCommandPalette(); } },
-        { label: 'Toggle Hints Panel', description: 'Show or hide Claude Code hints', icon: Lightbulb, shortcut: 'F1', action: () => { useAppStore.getState().toggleHints(); closeCommandPalette(); } },
-        { label: 'Toggle File Changes', description: 'Show or hide the file changes panel', icon: FileCode, shortcut: 'F2', action: () => { useAppStore.getState().toggleChanges(); closeCommandPalette(); } },
-        { label: 'Manage Profiles', description: 'Open profile management', icon: User, action: () => { useAppStore.getState().openProfileModal(); closeCommandPalette(); } },
-        { label: 'Workspaces', description: 'Open workspace manager', icon: FolderOpen, action: () => { useAppStore.getState().openWorkspaceModal(); closeCommandPalette(); } },
-        { label: 'Snippets', description: 'Open snippet manager', icon: Scissors, shortcut: 'Ctrl+Shift+S', action: () => { useAppStore.getState().openSnippetsModal(); closeCommandPalette(); } },
-        { label: 'Session History', description: 'View past terminal sessions', icon: History, action: () => { useAppStore.getState().openSessionHistory(); closeCommandPalette(); } },
+        { label: 'New Terminal', description: 'Create a new terminal instance', icon: Plus, shortcut: 'Ctrl+Shift+N', action: () => { replaceModal('newTerminal'); } },
+        { label: 'Toggle Sidebar', description: 'Show or hide the sidebar', icon: PanelLeft, shortcut: 'Ctrl+B', action: () => { useAppStore.getState().toggleSidebar(); closeModal(); } },
+        { label: 'Open Settings', description: 'Open application settings', icon: Settings, shortcut: 'Ctrl+,', action: () => { replaceModal('settings'); } },
+        { label: 'Toggle Grid View', description: 'Switch between tab and grid view', icon: LayoutGrid, shortcut: 'Ctrl+G', action: () => { useAppStore.getState().toggleGridMode(); closeModal(); } },
+        { label: 'Toggle Hints Panel', description: 'Show or hide Claude Code hints', icon: Lightbulb, shortcut: 'F1', action: () => { useAppStore.getState().toggleHints(); closeModal(); } },
+        { label: 'Toggle File Changes', description: 'Show or hide the file changes panel', icon: FileCode, shortcut: 'F2', action: () => { useAppStore.getState().toggleChanges(); closeModal(); } },
+        { label: 'Manage Profiles', description: 'Open profile management', icon: User, action: () => { replaceModal('profile'); } },
+        { label: 'Workspaces', description: 'Open workspace manager', icon: FolderOpen, action: () => { replaceModal('workspace'); } },
+        { label: 'Snippets', description: 'Open snippet manager', icon: Scissors, shortcut: 'Ctrl+Shift+S', action: () => { replaceModal('snippets'); } },
+        { label: 'Session History', description: 'View past terminal sessions', icon: History, action: () => { replaceModal('sessionHistory'); } },
       ];
       actions.forEach((a, i) => {
         result.push({ id: `action-${i}`, label: a.label, description: a.description, category: 'Commands', icon: a.icon, shortcut: a.shortcut, action: a.action });
@@ -149,7 +149,7 @@ export function CommandPalette() {
             description: hint.description,
             category: 'Hints',
             icon: Copy,
-            action: () => { navigator.clipboard.writeText(hint.command); closeCommandPalette(); },
+            action: () => { navigator.clipboard.writeText(hint.command); closeModal(); },
           });
         });
       });
@@ -166,14 +166,14 @@ export function CommandPalette() {
           icon: Send,
           action: () => {
             if (activeTerminalId) writeToTerminal(activeTerminalId, snippet.content);
-            closeCommandPalette();
+            closeModal();
           },
         });
       });
     }
 
     return result;
-  }, [terminals, hints, snippets, activeTerminalId, closeCommandPalette, setActiveTerminal, writeToTerminal, prefixMode]);
+  }, [terminals, hints, snippets, activeTerminalId, closeModal, replaceModal, setActiveTerminal, writeToTerminal, prefixMode]);
 
   const filtered = useMemo(() => {
     if (!effectiveQuery) return items;
@@ -213,7 +213,7 @@ export function CommandPalette() {
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
-      closeCommandPalette();
+      closeModal();
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
       setSelectedIndex(i => Math.min(i + 1, flatItems.length - 1));
@@ -249,7 +249,7 @@ export function CommandPalette() {
   return (
     <div
       className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
-      onDoubleClick={closeCommandPalette}
+      onDoubleClick={closeModal}
     >
       <motion.div
         initial={{ opacity: 0, scale: 0.96, y: -8 }}
