@@ -20,7 +20,6 @@ function fileBasename(p: string): string {
   return idx === -1 ? trimmed : trimmed.slice(idx + 1);
 }
 
-const isMac = navigator.platform.toUpperCase().includes('MAC');
 
 export function TerminalTabs() {
   const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, unreadTerminalIds, gitInfoCache, reorderTerminals, scriptChildren, closeScript, writeToTerminal } = useTerminalStore();
