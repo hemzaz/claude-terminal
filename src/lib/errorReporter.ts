@@ -12,9 +12,13 @@ export function reportError(kind: string, message: string, stack?: string): void
 }
 
 function scrub(s: string): string {
+  // Match the username portion of `C:\Users\<name>` and `file:///C:/Users/<name>`
+  // up to (but not including) the next path separator, whitespace, or shell
+  // metacharacter. The terminator stays in the output so the rest of the path /
+  // surrounding text is preserved.
   return s
-    .replace(/C:\\Users\\[^\\]+\\/g, 'C:\\Users\\<user>\\')
-    .replace(/file:\/\/\/C:\/Users\/[^/]+\//g, 'file:///C:/Users/<user>/');
+    .replace(/C:\\Users\\[^\\/\s'"<>|*?]+/g, 'C:\\Users\\<user>')
+    .replace(/file:\/\/\/C:\/Users\/[^/\s'"<>|*?]+/g, 'file:///C:/Users/<user>');
 }
 
 function clamp(s: string, max: number): string {

@@ -19,10 +19,15 @@ pub fn scrub(input: &str) -> String {
     use std::sync::OnceLock;
     static WIN_USER: OnceLock<regex::Regex> = OnceLock::new();
     static FILE_URI_USER: OnceLock<regex::Regex> = OnceLock::new();
-    let win = WIN_USER.get_or_init(|| regex::Regex::new(r"C:\\Users\\[^\\]+\\").unwrap());
-    let uri = FILE_URI_USER.get_or_init(|| regex::Regex::new(r"file:///C:/Users/[^/]+/").unwrap());
-    let step1 = win.replace_all(input, r"C:\Users\<user>\");
-    let step2 = uri.replace_all(&step1, "file:///C:/Users/<user>/");
+    // Match `C:\Users\<username>` where the username portion ends at the next path
+    // separator, whitespace, or shell metacharacter. The terminator is NOT consumed,
+    // so a trailing backslash, apostrophe, etc. remains intact in the output.
+    let win = WIN_USER
+        .get_or_init(|| regex::Regex::new(r#"C:\\Users\\[^\\/\s'"<>|*?]+"#).unwrap());
+    let uri = FILE_URI_USER
+        .get_or_init(|| regex::Regex::new(r#"file:///C:/Users/[^/\s'"<>|*?]+"#).unwrap());
+    let step1 = win.replace_all(input, r"C:\Users\<user>");
+    let step2 = uri.replace_all(&step1, "file:///C:/Users/<user>");
     step2.into_owned()
 }
 
@@ -277,6 +282,29 @@ mod tests {
     fn scrub_replaces_multiple_occurrences() {
         let input = r"C:\Users\bob\one and C:\Users\bob\two";
         assert_eq!(scrub(input), r"C:\Users\<user>\one and C:\Users\<user>\two");
+    }
+
+    #[test]
+    fn scrub_handles_username_followed_by_quote_or_space() {
+        // Real case from the feat/error-reporter smoke test: error message ended
+        // with the username followed by an apostrophe, not a backslash. The
+        // earlier regex required a trailing \ and leaked the username.
+        let input = r"Path '\\?\C:\Users\tal' is not under any active terminal";
+        assert_eq!(
+            scrub(input),
+            r"Path '\\?\C:\Users\<user>' is not under any active terminal"
+        );
+        // Same shape with a trailing space.
+        assert_eq!(
+            scrub(r"saw C:\Users\eve and continued"),
+            r"saw C:\Users\<user> and continued"
+        );
+    }
+
+    #[test]
+    fn scrub_handles_file_uri_username_followed_by_quote() {
+        let input = r#"src=file:///C:/Users/eve" loaded"#;
+        assert_eq!(scrub(input), r#"src=file:///C:/Users/<user>" loaded"#);
     }
 
     #[test]
