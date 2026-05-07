@@ -104,6 +104,10 @@ interface AppState {
   whatsNewOpen: boolean;
   lastSeenVersion: string | null;
 
+  // macOS update channel — Homebrew tap (default) or in-app updater. Ignored
+  // on Windows. Persisted so the choice survives restarts.
+  macUpdateSource: 'homebrew' | 'in-app';
+
   toggleSidebar: () => void;
   toggleSidebarCollapse: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -203,6 +207,9 @@ interface AppState {
   openWhatsNew: () => void;
   closeWhatsNew: () => void;
   setLastSeenVersion: (version: string) => void;
+
+  // macOS update source actions
+  setMacUpdateSource: (source: 'homebrew' | 'in-app') => void;
 }
 
 interface SavedTerminalConfig {
@@ -314,6 +321,10 @@ export const useAppStore = create<AppState>()(
       // What's New
       whatsNewOpen: false,
       lastSeenVersion: null,
+
+      // macOS update source — defaults to Homebrew (cleanest UX, no quarantine
+      // re-prompts). User can switch to in-app updater from Settings.
+      macUpdateSource: 'homebrew' as const,
 
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       toggleSidebarCollapse: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
@@ -618,6 +629,9 @@ export const useAppStore = create<AppState>()(
       openWhatsNew: () => set({ whatsNewOpen: true }),
       closeWhatsNew: () => set({ whatsNewOpen: false }),
       setLastSeenVersion: (version) => set({ lastSeenVersion: version }),
+
+      // macOS update source
+      setMacUpdateSource: (source) => set({ macUpdateSource: source }),
     }),
     {
       name: 'claude-terminal-app',
@@ -638,6 +652,7 @@ export const useAppStore = create<AppState>()(
         repositoriesHeightRatio: state.repositoriesHeightRatio,
         orchestrationOpen: state.orchestrationOpen,
         lastSeenVersion: state.lastSeenVersion,
+        macUpdateSource: state.macUpdateSource,
       }),
     }
   )

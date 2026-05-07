@@ -17,7 +17,8 @@ interface UpdateCheckResult {
 }
 
 export function SettingsModal() {
-  const { closeSettings, defaultClaudeArgs, setDefaultClaudeArgs, notifyOnFinish, setNotifyOnFinish, restoreSession, setRestoreSession, telemetryEnabled, setTelemetryEnabled, errorReportingEnabled, setErrorReportingEnabled, showGitPanel, setShowGitPanel, showFileTree, setShowFileTree } = useAppStore();
+  const { closeSettings, defaultClaudeArgs, setDefaultClaudeArgs, notifyOnFinish, setNotifyOnFinish, restoreSession, setRestoreSession, telemetryEnabled, setTelemetryEnabled, errorReportingEnabled, setErrorReportingEnabled, showGitPanel, setShowGitPanel, showFileTree, setShowFileTree, macUpdateSource, setMacUpdateSource } = useAppStore();
+  const homebrewManaged = isMac && macUpdateSource === 'homebrew';
   const [claudeVersion, setClaudeVersion] = useState<string>('');
   const [latestVersion, setLatestVersion] = useState<string>('');
   const [updateAvailable, setUpdateAvailable] = useState<boolean | null>(null);
@@ -37,8 +38,21 @@ export function SettingsModal() {
 
   useEffect(() => {
     checkForUpdates();
-    appUpdater.checkForUpdates();
-  }, []);
+    // Skip the in-app updater check when Homebrew owns macOS updates —
+    // there's no actionable UI for it and it would just hit network for nothing.
+    if (!homebrewManaged) {
+      appUpdater.checkForUpdates();
+    }
+  }, [homebrewManaged]);
+
+  const copyBrewCommand = async () => {
+    try {
+      await navigator.clipboard.writeText('brew upgrade --cask claude-terminal');
+      toast.success('Copied', 'brew upgrade --cask claude-terminal');
+    } catch {
+      toast.error('Copy failed', 'Could not access clipboard');
+    }
+  };
 
   const checkForUpdates = async () => {
     setIsChecking(true);
@@ -128,84 +142,148 @@ export function SettingsModal() {
           {/* App Updates */}
           <div>
             <h3 className="text-text-primary text-[13px] font-medium mb-2">App Updates</h3>
-            <div className="bg-bg-primary rounded-md ring-1 ring-border p-3 space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-text-primary text-[13px]">ClaudeTerminal</p>
-                  <p className="text-text-tertiary text-[11px]">v{appVersion}</p>
-                  {appUpdater.status === 'available' && appUpdater.updateInfo && (
-                    <p className="text-accent-primary text-[11px] mt-1">
-                      Update available: v{appUpdater.updateInfo.version}
+
+            {/* macOS update source toggle — Homebrew vs in-app */}
+            {isMac && (
+              <div className="bg-bg-primary rounded-md ring-1 ring-border p-3 mb-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-text-primary text-[13px]">Update source</p>
+                    <p className="text-text-tertiary text-[11px]">
+                      {macUpdateSource === 'homebrew'
+                        ? 'Homebrew tap — recommended (no Gatekeeper re-prompts)'
+                        : 'In-app updater — replaces the .app on launch'}
                     </p>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  {appUpdater.status === 'up-to-date' ? (
-                    <div className="flex items-center gap-2 bg-success/10 text-success h-9 px-4 rounded-md text-[12px] font-medium">
-                      <Check size={14} />
-                      Up to date
-                    </div>
-                  ) : appUpdater.status === 'ready' ? (
+                  </div>
+                  <div className="flex bg-bg-secondary ring-1 ring-border-light rounded-md p-0.5 flex-shrink-0">
                     <button
-                      onClick={appUpdater.restart}
-                      className="flex items-center gap-2 bg-success hover:bg-success/90 text-white h-9 px-4 rounded-md text-[12px] font-medium transition-colors"
+                      onClick={() => setMacUpdateSource('homebrew')}
+                      className={`px-3 h-7 rounded-[5px] text-[11px] font-medium transition-colors ${
+                        macUpdateSource === 'homebrew'
+                          ? 'bg-accent-primary text-white'
+                          : 'text-text-secondary hover:text-text-primary'
+                      }`}
                     >
-                      <Rocket size={14} />
-                      Restart to Update
+                      Homebrew
                     </button>
-                  ) : appUpdater.status === 'downloading' ? (
-                    <div className="flex items-center gap-2 bg-bg-secondary text-text-primary h-9 px-4 rounded-md text-[12px] font-medium">
-                      <RefreshCw size={14} className="animate-spin" />
-                      {appUpdater.downloadProgress}%
-                    </div>
-                  ) : appUpdater.status === 'available' ? (
                     <button
-                      onClick={appUpdater.downloadAndInstall}
-                      className="flex items-center gap-2 bg-accent-primary hover:bg-accent-secondary text-white h-9 px-4 rounded-md text-[12px] font-medium transition-colors"
+                      onClick={() => setMacUpdateSource('in-app')}
+                      className={`px-3 h-7 rounded-[5px] text-[11px] font-medium transition-colors ${
+                        macUpdateSource === 'in-app'
+                          ? 'bg-accent-primary text-white'
+                          : 'text-text-secondary hover:text-text-primary'
+                      }`}
                     >
-                      <Download size={14} />
-                      Download Update
+                      In-app
                     </button>
-                  ) : (
-                    <button
-                      onClick={appUpdater.checkForUpdates}
-                      disabled={appUpdater.status === 'checking'}
-                      className="flex items-center gap-2 bg-bg-secondary ring-1 ring-border-light hover:bg-white/[0.04] text-text-primary h-9 px-4 rounded-md text-[12px] font-medium disabled:opacity-50 transition-colors"
-                    >
-                      {appUpdater.status === 'checking' ? (
-                        <RefreshCw size={14} className="animate-spin" />
-                      ) : (
-                        <RefreshCw size={14} />
-                      )}
-                      Check for Updates
-                    </button>
-                  )}
+                  </div>
                 </div>
               </div>
+            )}
 
-              {appUpdater.status === 'downloading' && (
-                <div className="space-y-1">
-                  <div className="h-1 bg-border rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-accent-primary transition-all duration-300"
-                      style={{ width: `${appUpdater.downloadProgress}%` }}
-                    />
+            <div className="bg-bg-primary rounded-md ring-1 ring-border p-3 space-y-3">
+              {homebrewManaged ? (
+                /* macOS + Homebrew — show brew command instead of in-app UI */
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-text-primary text-[13px]">ClaudeTerminal</p>
+                      <p className="text-text-tertiary text-[11px]">v{appVersion}</p>
+                    </div>
                   </div>
-                  <p className="text-text-tertiary text-[11px]">Downloading update...</p>
-                </div>
-              )}
-
-              {appUpdater.error && (
-                <div className="text-[11px] p-2 rounded bg-error/10 text-error space-y-2">
-                  <p>{appUpdater.error}</p>
+                  <p className="text-text-secondary text-[11px]">
+                    Run this in your terminal to update:
+                  </p>
                   <button
-                    onClick={() => invoke('open_external_url', { url: 'https://github.com/talayash/claude-terminal/releases/latest' })}
-                    className="flex items-center gap-1.5 text-accent-primary hover:text-accent-secondary transition-colors"
+                    onClick={copyBrewCommand}
+                    className="w-full flex items-center justify-between gap-2 bg-bg-secondary hover:bg-white/[0.04] ring-1 ring-border-light text-text-primary h-9 px-3 rounded-md text-[11px] font-mono transition-colors"
+                    title="Click to copy"
                   >
-                    <ExternalLink size={12} />
-                    Download manually from GitHub
+                    <span className="truncate">brew upgrade --cask claude-terminal</span>
+                    <span className="flex-shrink-0 text-text-tertiary text-[10px]">Copy</span>
                   </button>
                 </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-text-primary text-[13px]">ClaudeTerminal</p>
+                      <p className="text-text-tertiary text-[11px]">v{appVersion}</p>
+                      {appUpdater.status === 'available' && appUpdater.updateInfo && (
+                        <p className="text-accent-primary text-[11px] mt-1">
+                          Update available: v{appUpdater.updateInfo.version}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      {appUpdater.status === 'up-to-date' ? (
+                        <div className="flex items-center gap-2 bg-success/10 text-success h-9 px-4 rounded-md text-[12px] font-medium">
+                          <Check size={14} />
+                          Up to date
+                        </div>
+                      ) : appUpdater.status === 'ready' ? (
+                        <button
+                          onClick={appUpdater.restart}
+                          className="flex items-center gap-2 bg-success hover:bg-success/90 text-white h-9 px-4 rounded-md text-[12px] font-medium transition-colors"
+                        >
+                          <Rocket size={14} />
+                          Restart to Update
+                        </button>
+                      ) : appUpdater.status === 'downloading' ? (
+                        <div className="flex items-center gap-2 bg-bg-secondary text-text-primary h-9 px-4 rounded-md text-[12px] font-medium">
+                          <RefreshCw size={14} className="animate-spin" />
+                          {appUpdater.downloadProgress}%
+                        </div>
+                      ) : appUpdater.status === 'available' ? (
+                        <button
+                          onClick={appUpdater.downloadAndInstall}
+                          className="flex items-center gap-2 bg-accent-primary hover:bg-accent-secondary text-white h-9 px-4 rounded-md text-[12px] font-medium transition-colors"
+                        >
+                          <Download size={14} />
+                          Download Update
+                        </button>
+                      ) : (
+                        <button
+                          onClick={appUpdater.checkForUpdates}
+                          disabled={appUpdater.status === 'checking'}
+                          className="flex items-center gap-2 bg-bg-secondary ring-1 ring-border-light hover:bg-white/[0.04] text-text-primary h-9 px-4 rounded-md text-[12px] font-medium disabled:opacity-50 transition-colors"
+                        >
+                          {appUpdater.status === 'checking' ? (
+                            <RefreshCw size={14} className="animate-spin" />
+                          ) : (
+                            <RefreshCw size={14} />
+                          )}
+                          Check for Updates
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {appUpdater.status === 'downloading' && (
+                    <div className="space-y-1">
+                      <div className="h-1 bg-border rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-accent-primary transition-all duration-300"
+                          style={{ width: `${appUpdater.downloadProgress}%` }}
+                        />
+                      </div>
+                      <p className="text-text-tertiary text-[11px]">Downloading update...</p>
+                    </div>
+                  )}
+
+                  {appUpdater.error && (
+                    <div className="text-[11px] p-2 rounded bg-error/10 text-error space-y-2">
+                      <p>{appUpdater.error}</p>
+                      <button
+                        onClick={() => invoke('open_external_url', { url: 'https://github.com/hemzaz/claude-terminal/releases/latest' })}
+                        className="flex items-center gap-1.5 text-accent-primary hover:text-accent-secondary transition-colors"
+                      >
+                        <ExternalLink size={12} />
+                        Download manually from GitHub
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>

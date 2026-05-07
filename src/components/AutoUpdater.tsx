@@ -3,16 +3,27 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Download, RefreshCw, CheckCircle, AlertCircle, X, Rocket, ExternalLink } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useUpdaterStore } from '../store/updaterStore';
+import { useAppStore } from '../store/appStore';
 
-const RELEASES_URL = 'https://github.com/talayash/claude-terminal/releases/latest';
+const RELEASES_URL = 'https://github.com/hemzaz/claude-terminal/releases/latest';
+
+const isMac = navigator.platform.toUpperCase().includes('MAC');
 
 export function AutoUpdater() {
   const { status, updateInfo, downloadProgress, error, checkForUpdates, downloadAndInstall, restart } = useUpdaterStore();
+  const macUpdateSource = useAppStore((s) => s.macUpdateSource);
   const [showBanner, setShowBanner] = useState(false);
   const [dismissed, setDismissed] = useState(false);
 
-  // Check for updates on mount
+  // On macOS, the in-app updater is opt-in. Default is the Homebrew tap so
+  // (a) users don't get two competing update paths, and (b) an unsigned .app
+  // replacement doesn't re-trigger Gatekeeper quarantine on every release.
+  // Users can flip to in-app updates from Settings.
+  const inAppDisabled = isMac && macUpdateSource === 'homebrew';
+
+  // Check for updates on mount (skipped when in-app updater is disabled)
   useEffect(() => {
+    if (inAppDisabled) return;
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
@@ -28,19 +39,25 @@ export function AutoUpdater() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, []);
+  }, [inAppDisabled]);
 
   // Show banner when update becomes available (e.g. from Settings check)
   useEffect(() => {
+    if (inAppDisabled) return;
     if (status === 'available' && !dismissed) {
       setShowBanner(true);
     }
-  }, [status, dismissed]);
+  }, [status, dismissed, inAppDisabled]);
 
   const dismissBanner = () => {
     setDismissed(true);
     setShowBanner(false);
   };
+
+  // Homebrew-managed mac users never see the in-app banner.
+  if (inAppDisabled) {
+    return null;
+  }
 
   // Don't show anything if dismissed or no banner needed
   if (!showBanner || dismissed) {
