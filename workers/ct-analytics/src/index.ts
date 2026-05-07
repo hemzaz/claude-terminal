@@ -270,7 +270,7 @@ async function handleErrorReport(request: Request, env: Env, ctx: ExecutionConte
   const payload = normalizeError(body, request);
   if (!payload) return json({ error: 'invalid_payload' }, 400);
 
-  const rateKey = `rl:errors:${payload.installation_id}`;
+  const rateKey = `rl:errors:${payload.installation_id}:${payload.fingerprint}`;
   if (await env.KV_BINDING.get(rateKey)) {
     return json({ ok: true, throttled: true });
   }

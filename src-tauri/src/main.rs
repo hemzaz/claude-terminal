@@ -17,6 +17,8 @@ pub struct AppState {
 }
 
 fn main() {
+    // In release builds (panic = "abort"), panic reports are best-effort:
+    // the spawned send task usually doesn't get to flush before abort.
     std::panic::set_hook(Box::new(|info| {
         let msg = info
             .payload()
