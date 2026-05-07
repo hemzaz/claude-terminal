@@ -26,6 +26,34 @@ pub fn scrub(input: &str) -> String {
     step2.into_owned()
 }
 
+pub fn fingerprint(
+    source: ErrorSource,
+    kind: Option<&str>,
+    message: &str,
+    stack: Option<&str>,
+) -> String {
+    use sha2::{Digest, Sha256};
+    let first_line = stack
+        .and_then(|s| s.lines().find(|l| !l.trim().is_empty()))
+        .or_else(|| message.lines().find(|l| !l.trim().is_empty()))
+        .unwrap_or("")
+        .trim();
+    let kind_str = kind.unwrap_or("");
+    let mut h = Sha256::new();
+    h.update(source.as_tag().as_bytes());
+    h.update(b"|");
+    h.update(kind_str.as_bytes());
+    h.update(b"|");
+    h.update(first_line.as_bytes());
+    let digest = h.finalize();
+    let mut out = String::with_capacity(16);
+    for b in digest.iter().take(8) {
+        use std::fmt::Write;
+        write!(&mut out, "{:02x}", b).unwrap();
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -64,5 +92,35 @@ mod tests {
         assert_eq!(ErrorSource::RustPanic.as_tag(), "rust_panic");
         assert_eq!(ErrorSource::RustCommand.as_tag(), "rust_command");
         assert_eq!(ErrorSource::Frontend.as_tag(), "frontend");
+    }
+
+    #[test]
+    fn fingerprint_is_stable_for_identical_inputs() {
+        let a = fingerprint(ErrorSource::RustPanic, Some("PtyOpenError"), "boom", Some("at foo\nat bar"));
+        let b = fingerprint(ErrorSource::RustPanic, Some("PtyOpenError"), "boom", Some("at foo\nat bar"));
+        assert_eq!(a, b);
+        assert_eq!(a.len(), 16);
+    }
+
+    #[test]
+    fn fingerprint_changes_with_source() {
+        let a = fingerprint(ErrorSource::RustPanic, None, "boom", None);
+        let b = fingerprint(ErrorSource::Frontend, None, "boom", None);
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn fingerprint_uses_first_stack_line_when_present() {
+        let with_stack = fingerprint(ErrorSource::Frontend, None, "ignored", Some("at A\nat B"));
+        let other_stack = fingerprint(ErrorSource::Frontend, None, "ignored", Some("at A\nat C"));
+        // First line is the same ("at A") so fingerprint matches even with different deeper frames.
+        assert_eq!(with_stack, other_stack);
+    }
+
+    #[test]
+    fn fingerprint_falls_back_to_message_when_stack_missing() {
+        let a = fingerprint(ErrorSource::Frontend, None, "msg one", None);
+        let b = fingerprint(ErrorSource::Frontend, None, "msg two", None);
+        assert_ne!(a, b);
     }
 }
