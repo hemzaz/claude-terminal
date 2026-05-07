@@ -133,6 +133,13 @@ function App() {
     checkWhatsNew();
   }, [showSetup, lastSeenVersion, setLastSeenVersion, openWhatsNew]);
 
+  // Push the persisted error-reporting preference to Rust on mount.
+  // The Rust flag defaults to false, so until this fires no panics are reported.
+  useEffect(() => {
+    const enabled = useAppStore.getState().errorReportingEnabled;
+    invoke('set_error_reporting_enabled', { enabled }).catch(() => {});
+  }, []);
+
   // Telemetry heartbeat — fire on startup then every 5 minutes
   useEffect(() => {
     if (showSetup !== false) return;
