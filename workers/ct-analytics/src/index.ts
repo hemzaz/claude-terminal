@@ -34,6 +34,29 @@ interface HeartbeatBody {
   timestamp?: unknown;
 }
 
+interface ErrorReportBody {
+  installation_id?: unknown;
+  app_version?: unknown;
+  os?: unknown;
+  source?: unknown;
+  kind?: unknown;
+  message?: unknown;
+  stack?: unknown;
+  fingerprint?: unknown;
+}
+
+interface NormalizedErrorReport {
+  installation_id: string;
+  app_version: string;
+  os: string;
+  country: string;
+  source: string;
+  kind: string | null;
+  message: string;
+  stack: string | null;
+  fingerprint: string;
+}
+
 interface NormalizedPayload {
   installation_id: string;
   version: string;
@@ -57,6 +80,7 @@ const CORS_HEADERS: Record<string, string> = {
 const LIVE_TTL_SECONDS = 900;
 const MAX_HISTORY_DAYS = 365;
 const RATE_LIMIT_TTL_SECONDS = 60;
+const ERROR_RETENTION_DAYS = 90;
 
 function requireToken(request: Request, expected: string | undefined): Response | null {
   if (!expected) return json({ error: 'server_misconfigured' }, 500);
@@ -103,6 +127,35 @@ function normalize(body: HeartbeatBody, request: Request): NormalizedPayload | n
     version,
     os: os.toLowerCase(),
     country,
+  };
+}
+
+const ALLOWED_SOURCES = new Set(['rust_panic', 'rust_command', 'frontend']);
+
+function normalizeError(body: ErrorReportBody, request: Request): NormalizedErrorReport | null {
+  const installation_id = clampString(body.installation_id, 128);
+  const app_version = clampString(body.app_version, 32);
+  const os = clampString(body.os, 32);
+  const source = clampString(body.source, 16);
+  const message = clampString(body.message, 2048);
+  if (!installation_id || !app_version || !os || !source || !message) return null;
+  if (!ALLOWED_SOURCES.has(source)) return null;
+
+  const country =
+    typeof (request as Request & { cf?: { country?: string } }).cf?.country === 'string'
+      ? ((request as Request & { cf?: { country?: string } }).cf!.country as string).toUpperCase().slice(0, 2)
+      : 'XX';
+
+  return {
+    installation_id,
+    app_version,
+    os: os.toLowerCase(),
+    country,
+    source,
+    kind: clampString(body.kind, 64),
+    message,
+    stack: clampString(body.stack, 8192),
+    fingerprint: clampString(body.fingerprint, 16) ?? 'unknown',
   };
 }
 
@@ -200,6 +253,49 @@ async function handleHeartbeat(
     await env.DB.batch(stmts);
   } catch (err) {
     console.error('[heartbeat] D1 batch failed:', err);
+    return json({ error: 'db_error' }, 500);
+  }
+
+  return json({ ok: true });
+}
+
+async function handleErrorReport(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  let body: ErrorReportBody;
+  try {
+    body = (await request.json()) as ErrorReportBody;
+  } catch {
+    return json({ error: 'invalid_json' }, 400);
+  }
+
+  const payload = normalizeError(body, request);
+  if (!payload) return json({ error: 'invalid_payload' }, 400);
+
+  const rateKey = `rl:errors:${payload.installation_id}:${payload.fingerprint}`;
+  if (await env.KV_BINDING.get(rateKey)) {
+    return json({ ok: true, throttled: true });
+  }
+  ctx.waitUntil(env.KV_BINDING.put(rateKey, '1', { expirationTtl: RATE_LIMIT_TTL_SECONDS }));
+
+  try {
+    await env.DB.prepare(
+      'INSERT INTO errors (ts, installation_id, app_version, os, country, source, kind, message, stack, fingerprint) ' +
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind(
+        new Date().toISOString(),
+        payload.installation_id,
+        payload.app_version,
+        payload.os,
+        payload.country,
+        payload.source,
+        payload.kind,
+        payload.message,
+        payload.stack,
+        payload.fingerprint,
+      )
+      .run();
+  } catch (err) {
+    console.error('[error_report] D1 insert failed:', err);
     return json({ error: 'db_error' }, 500);
   }
 
@@ -322,6 +418,14 @@ async function handleStatsHistory(url: URL, env: Env): Promise<Response> {
 }
 
 export default {
+  async scheduled(_controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
+    try {
+      await env.DB.prepare("DELETE FROM errors WHERE ts < datetime('now', ?)").bind(`-${ERROR_RETENTION_DAYS} days`).run();
+    } catch (err) {
+      console.error('[scheduled] error cleanup failed:', err);
+    }
+  },
+
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
@@ -339,6 +443,11 @@ export default {
         const denied = requireToken(request, env.INGEST_TOKEN);
         if (denied) return denied;
         return await handleHeartbeat(request, env, ctx, 'update_checks');
+      }
+      if (request.method === 'POST' && url.pathname === '/error_report') {
+        const denied = requireToken(request, env.INGEST_TOKEN);
+        if (denied) return denied;
+        return await handleErrorReport(request, env, ctx);
       }
       if (request.method === 'GET' && url.pathname === '/stats') {
         const denied = requireToken(request, env.STATS_TOKEN);
