@@ -54,6 +54,8 @@ pub fn fingerprint(
     out
 }
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::OnceLock;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -84,6 +86,31 @@ impl Dedup {
         map.insert(fp.to_string(), now);
         true
     }
+}
+
+static REPORTER: OnceLock<ReporterState> = OnceLock::new();
+static ENABLED: AtomicBool = AtomicBool::new(false);
+
+struct ReporterState {
+    installation_id: String,
+    app_version: String,
+    dedup: Dedup,
+}
+
+pub fn init(installation_id: String, app_version: String) {
+    let _ = REPORTER.set(ReporterState {
+        installation_id,
+        app_version,
+        dedup: Dedup::new(),
+    });
+}
+
+pub fn set_enabled(enabled: bool) {
+    ENABLED.store(enabled, Ordering::Relaxed);
+}
+
+pub fn is_enabled() -> bool {
+    ENABLED.load(Ordering::Relaxed)
 }
 
 #[cfg(test)]
@@ -189,5 +216,23 @@ mod tests {
         let t0 = Instant::now();
         assert!(dedup.should_send("abc", t0));
         assert!(dedup.should_send("def", t0));
+    }
+
+    #[test]
+    fn enabled_defaults_to_false_before_init() {
+        // Note: state is process-global; this test relies on running before any init().
+        // With cargo test default (single binary), other tests don't call init(),
+        // so this stays valid.
+        assert!(!is_enabled());
+    }
+
+    #[test]
+    fn set_enabled_flips_the_flag() {
+        // Force a known state.
+        set_enabled(false);
+        assert!(!is_enabled());
+        set_enabled(true);
+        assert!(is_enabled());
+        set_enabled(false);
     }
 }
