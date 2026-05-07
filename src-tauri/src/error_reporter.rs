@@ -54,6 +54,38 @@ pub fn fingerprint(
     out
 }
 
+use std::collections::HashMap;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+const DEDUP_WINDOW: Duration = Duration::from_secs(60);
+
+pub struct Dedup {
+    map: Mutex<HashMap<String, Instant>>,
+}
+
+impl Dedup {
+    pub fn new() -> Self {
+        Self { map: Mutex::new(HashMap::new()) }
+    }
+
+    pub fn should_send(&self, fp: &str, now: Instant) -> bool {
+        let mut map = match self.map.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(), // poisoned mutex; recover by taking the data
+        };
+        // Opportunistic prune: drop expired entries.
+        map.retain(|_, t| now.saturating_duration_since(*t) <= DEDUP_WINDOW);
+        if let Some(last) = map.get(fp) {
+            if now.saturating_duration_since(*last) <= DEDUP_WINDOW {
+                return false;
+            }
+        }
+        map.insert(fp.to_string(), now);
+        true
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -122,5 +154,40 @@ mod tests {
         let a = fingerprint(ErrorSource::Frontend, None, "msg one", None);
         let b = fingerprint(ErrorSource::Frontend, None, "msg two", None);
         assert_ne!(a, b);
+    }
+
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn should_send_first_time_returns_true() {
+        let dedup = Dedup::new();
+        let now = Instant::now();
+        assert!(dedup.should_send("abc", now));
+    }
+
+    #[test]
+    fn should_send_within_window_returns_false() {
+        let dedup = Dedup::new();
+        let t0 = Instant::now();
+        assert!(dedup.should_send("abc", t0));
+        let t1 = t0 + Duration::from_secs(30);
+        assert!(!dedup.should_send("abc", t1));
+    }
+
+    #[test]
+    fn should_send_after_window_returns_true() {
+        let dedup = Dedup::new();
+        let t0 = Instant::now();
+        assert!(dedup.should_send("abc", t0));
+        let t1 = t0 + Duration::from_secs(61);
+        assert!(dedup.should_send("abc", t1));
+    }
+
+    #[test]
+    fn should_send_distinct_fingerprints_independent() {
+        let dedup = Dedup::new();
+        let t0 = Instant::now();
+        assert!(dedup.should_send("abc", t0));
+        assert!(dedup.should_send("def", t0));
     }
 }
