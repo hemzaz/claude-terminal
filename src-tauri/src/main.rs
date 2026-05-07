@@ -145,6 +145,8 @@ fn main() {
             commands::create_script_terminal,
             commands::create_shell_terminal,
             commands::search_in_files,
+            commands::report_error,
+            commands::set_error_reporting_enabled,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

@@ -3,8 +3,55 @@ use crate::database::{SessionHistoryEntry, Snippet};
 use crate::AppState;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::future::Future;
 use tauri::{command, AppHandle, Emitter, State};
 use tokio::sync::mpsc;
+use crate::error_reporter::{self, ErrorSource};
+
+/// Wrap a Tauri command body so any `Err(String)` it returns is also reported
+/// to the error_reporter (fire-and-forget). The command's behavior is unchanged.
+pub async fn wrap_cmd<T, F>(name: &'static str, fut: F) -> Result<T, String>
+where
+    F: Future<Output = Result<T, String>>,
+{
+    match fut.await {
+        Ok(v) => Ok(v),
+        Err(e) => {
+            tokio::spawn(error_reporter::report(
+                ErrorSource::RustCommand,
+                Some(name.to_string()),
+                e.clone(),
+                None,
+            ));
+            Err(e)
+        }
+    }
+}
+
+#[derive(serde::Deserialize)]
+pub struct FrontendErrorPayload {
+    pub kind: Option<String>,
+    pub message: String,
+    pub stack: Option<String>,
+}
+
+#[command]
+pub async fn report_error(payload: FrontendErrorPayload) -> Result<(), String> {
+    error_reporter::report(
+        ErrorSource::Frontend,
+        payload.kind,
+        payload.message,
+        payload.stack,
+    )
+    .await;
+    Ok(())
+}
+
+#[command]
+pub fn set_error_reporting_enabled(enabled: bool) -> Result<(), String> {
+    error_reporter::set_enabled(enabled);
+    Ok(())
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateTerminalRequest {
