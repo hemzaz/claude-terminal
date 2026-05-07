@@ -13,7 +13,7 @@
   ```
   The Cask file lives at `Casks/claude-terminal.rb` in this repo and is regenerated on every release by `.github/workflows/release.yml` (job `update-homebrew-cask`). It points at the versioned `ClaudeTerminal_<version>_aarch64.dmg`, installs the `.app` to `/Applications`, and a `postflight` block runs `xattr -cr` to strip the Gatekeeper quarantine attribute. App is **not notarized** (no Apple Developer ID). The macOS update channel is user-selectable in Settings → App Updates → Update source (default: Homebrew, alternative: in-app updater).
 
-Current version: **1.20.8**
+Current version: **1.20.9**
 
 For the full architecture map (modules, IPC surface, DB schema, data flows, gotchas), see [docs/CODEBASE_MAP.md](docs/CODEBASE_MAP.md).
 

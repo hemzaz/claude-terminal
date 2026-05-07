@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.20.9",
+    "date": "2026-05-07",
+    "features": [
+      { "title": "macOS Apple Silicon support", "description": "Native build for M-series Macs distributed via a Homebrew tap. Install with: brew tap hemzaz/claude-terminal https://github.com/hemzaz/claude-terminal && brew install --cask hemzaz/claude-terminal/claude-terminal. The cask handles Gatekeeper quarantine automatically (xattr -cr) since the app is unsigned." },
+      { "title": "User-selectable update source on macOS", "description": "Settings → App Updates → Update source lets Mac users choose between Homebrew (default, recommended) and the in-app updater. Avoids two competing update paths and Gatekeeper re-prompts on every release." },
+      { "title": "Better Claude Code install errors", "description": "When `npm install -g` fails with EACCES on macOS or Linux (typical for Node installed from nodejs.org), the SetupWizard now surfaces actionable guidance — install via Homebrew/nvm, or run with sudo — instead of dumping raw npm stderr." },
+      { "title": "Maintenance", "description": "Drop the x86_64-apple-darwin matrix entry from CI (Apple Silicon only). Bump bundle.macOS.minimumSystemVersion to 11.0 (Big Sur)." }
+    ]
+  },
+  {
     "version": "1.20.8",
     "date": "2026-05-07",
     "features": [
