@@ -50,6 +50,7 @@
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
+      "signCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/sign-windows.ps1 -FilePath \"%1\"",
       "nsis": {
         "installerIcon": "icons/icon.ico",
         "headerImage": "icons/icon.png",
