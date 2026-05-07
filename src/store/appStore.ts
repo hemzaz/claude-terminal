@@ -39,6 +39,7 @@ interface AppState {
   notifyOnFinish: boolean;
   restoreSession: boolean;
   telemetryEnabled: boolean;
+  errorReportingEnabled: boolean;
   showGitPanel: boolean;
   showFileTree: boolean;
 
@@ -123,6 +124,7 @@ interface AppState {
   setNotifyOnFinish: (enabled: boolean) => void;
   setRestoreSession: (enabled: boolean) => void;
   setTelemetryEnabled: (enabled: boolean) => void;
+  setErrorReportingEnabled: (enabled: boolean) => void;
   setShowGitPanel: (enabled: boolean) => void;
   setShowFileTree: (enabled: boolean) => void;
   setPinnedRepoPath: (path: string | null) => void;
@@ -246,6 +248,7 @@ export const useAppStore = create<AppState>()(
       notifyOnFinish: true,
       restoreSession: true,
       telemetryEnabled: true,
+      errorReportingEnabled: true,
       showGitPanel: true,
       showFileTree: true,
 
@@ -332,6 +335,7 @@ export const useAppStore = create<AppState>()(
       setNotifyOnFinish: (enabled) => set({ notifyOnFinish: enabled }),
       setRestoreSession: (enabled) => set({ restoreSession: enabled }),
       setTelemetryEnabled: (enabled) => set({ telemetryEnabled: enabled }),
+      setErrorReportingEnabled: (enabled) => set({ errorReportingEnabled: enabled }),
       setShowGitPanel: (enabled) => set({ showGitPanel: enabled }),
       setShowFileTree: (enabled) => set({ showFileTree: enabled }),
       setPinnedRepoPath: (path) => set({ pinnedRepoPath: path }),
@@ -626,6 +630,7 @@ export const useAppStore = create<AppState>()(
         notifyOnFinish: state.notifyOnFinish,
         restoreSession: state.restoreSession,
         telemetryEnabled: state.telemetryEnabled,
+        errorReportingEnabled: state.errorReportingEnabled,
         showGitPanel: state.showGitPanel,
         showFileTree: state.showFileTree,
         explorerHeightRatio: state.explorerHeightRatio,
