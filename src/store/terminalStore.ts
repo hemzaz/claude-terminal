@@ -37,6 +37,8 @@ interface TerminalInstance {
   // Plain interactive shell at a directory (no claude). Renders in the bottom
   // BottomTerminalPane, not the main tab bar / sidebar.
   isShellTerminal?: boolean;
+  // Context window usage as a 0–1 fraction. null/undefined = not yet detected.
+  contextUsageFraction?: number | null;
 }
 
 interface TerminalState {
@@ -70,6 +72,7 @@ interface TerminalState {
   updateTerminalStatus: (id: string, status: TerminalConfig['status']) => void;
   setLoopMode: (id: string, info: LoopInfo | null) => void;
   setSessionSummary: (id: string, summary: string | null) => void;
+  setContextUsage: (id: string, fraction: number) => void;
   getTerminalList: () => TerminalConfig[];
   clearUnread: (id: string) => void;
   hasUnread: (id: string) => boolean;
@@ -89,6 +92,40 @@ interface TerminalState {
   closeShellTerminal: (id: string) => Promise<void>;
   setActiveBottomTerminal: (id: string | null) => void;
 }
+
+// ---- Context window usage parsing ----------------------------------------
+// Module-level rolling buffers keep this off the Zustand hot path.
+// Each terminal accumulates the last CONTEXT_BUF_SIZE chars of decoded output;
+// we only call set() when the fraction changes by more than 0.5%.
+
+const CONTEXT_BUF_SIZE = 768;
+const contextBuffers = new Map<string, string>();
+const ANSI_STRIP_RE = /\x1b\[[0-9;?]*[A-Za-z]|\x1b[()][012AB]|\x1b.|\r/g;
+const textDecoder = new TextDecoder('utf-8', { fatal: false });
+
+function extractContextFraction(buf: string): number | null {
+  const clean = buf.replace(ANSI_STRIP_RE, '');
+
+  // Pattern 1: "context: 82%" / "82% context" / "[context 82%]"
+  const m1 = clean.match(
+    /context[^%\n]{0,60}?(\d{1,3})%|(\d{1,3})%[^%\n]{0,40}?context/i,
+  );
+  if (m1) {
+    const pct = parseInt(m1[1] ?? m1[2], 10);
+    if (pct >= 0 && pct <= 100) return pct / 100;
+  }
+
+  // Pattern 2: token fraction "164,523 / 200,000 tokens"
+  const m2 = clean.match(/(\d[\d,]+)\s*\/\s*(\d[\d,]+)\s*(?:tokens?|tok)?\b/i);
+  if (m2) {
+    const used = parseInt(m2[1].replace(/,/g, ''), 10);
+    const total = parseInt(m2[2].replace(/,/g, ''), 10);
+    if (total >= 10_000 && used <= total) return Math.min(used / total, 1.0);
+  }
+
+  return null;
+}
+// --------------------------------------------------------------------------
 
 export const useTerminalStore = create<TerminalState>((set, get) => ({
   terminals: new Map(),
@@ -275,6 +312,20 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
         return { unreadTerminalIds: newUnread };
       });
     }
+
+    // Context usage parsing — low-overhead rolling-buffer approach.
+    // Only update Zustand state when the fraction changes meaningfully.
+    const chunk = textDecoder.decode(data);
+    const prev = contextBuffers.get(id) ?? '';
+    const next = (prev + chunk).slice(-CONTEXT_BUF_SIZE);
+    contextBuffers.set(id, next);
+    const fraction = extractContextFraction(next);
+    if (fraction !== null) {
+      const current = instance?.contextUsageFraction ?? null;
+      if (current === null || Math.abs(fraction - current) >= 0.005) {
+        get().setContextUsage(id, fraction);
+      }
+    }
   },
 
   updateTerminalStatus: (id, status) => {
@@ -305,6 +356,17 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       const instance = newTerminals.get(id);
       if (instance) {
         instance.sessionSummary = summary;
+      }
+      return { terminals: newTerminals };
+    });
+  },
+
+  setContextUsage: (id, fraction) => {
+    set((state) => {
+      const newTerminals = new Map(state.terminals);
+      const instance = newTerminals.get(id);
+      if (instance) {
+        instance.contextUsageFraction = fraction;
       }
       return { terminals: newTerminals };
     });
