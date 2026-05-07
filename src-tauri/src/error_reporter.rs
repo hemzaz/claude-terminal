@@ -198,6 +198,40 @@ pub async fn report(
     }
 }
 
+pub fn report_blocking(
+    source: ErrorSource,
+    kind: Option<String>,
+    message: String,
+    stack: Option<String>,
+) {
+    let fut = report(source, kind, message, stack);
+
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        // We're on a Tokio thread; spawn and detach. In release with panic=abort
+        // the process will likely die before completion, but in debug builds it
+        // runs to completion since the panic hook returns and the runtime stays up.
+        handle.spawn(fut);
+        return;
+    }
+
+    // No runtime — build a one-shot single-threaded runtime and drive `fut` to
+    // completion (or our 5s timeout). Best-effort.
+    let rt = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("[error_reporter] failed to build temp runtime: {}", e);
+            return;
+        }
+    };
+    rt.block_on(async {
+        // The 5s timeout inside report() bounds the wait.
+        fut.await;
+    });
+}
+
 fn clamp(s: String, max: usize) -> String {
     if s.len() <= max {
         return s;
