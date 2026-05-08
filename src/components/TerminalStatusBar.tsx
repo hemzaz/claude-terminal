@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { RotateCw, Square, ClipboardCopy, Clock, FolderOpen, Check } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
+import { modelBadge } from '../lib/models';
 
 interface TerminalStatusBarProps {
   terminalId: string;
@@ -89,12 +90,7 @@ export function TerminalStatusBar({ terminalId }: TerminalStatusBarProps) {
         </span>
 
         {model && (
-          <span className={`px-1 rounded font-medium flex-shrink-0 text-[9px] ${
-            model === 'opus' ? 'bg-purple-500/20 text-purple-400' :
-            model === 'sonnet' ? 'bg-blue-500/20 text-blue-400' :
-            model === 'haiku' ? 'bg-green-500/20 text-green-400' :
-            'bg-white/[0.06] text-text-tertiary'
-          }`}>
+          <span className={`px-1 rounded font-medium flex-shrink-0 text-[9px] ${modelBadge(model)}`}>
             {model}
           </span>
         )}

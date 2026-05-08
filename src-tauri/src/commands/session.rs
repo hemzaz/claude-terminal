@@ -4,6 +4,10 @@ use tauri::{command, State};
 
 use super::shared::{shell_command, wrap_cmd};
 
+/// Model used for auto-summarising session logs.
+/// Change this single constant to switch the summariser model globally.
+const SUMMARIZER_MODEL: &str = "haiku";
+
 #[command]
 pub async fn get_session_history(
     state: State<'_, AppState>,
@@ -187,7 +191,7 @@ pub async fn summarize_session(log_path: String) -> Result<Option<String>, Strin
             &[
                 "-p",
                 "--model",
-                "haiku",
+                SUMMARIZER_MODEL,
                 "Summarize what was accomplished in this terminal session in 2-3 bullet points. Be concise.",
             ],
         );

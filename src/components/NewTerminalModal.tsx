@@ -7,6 +7,7 @@ import { useTerminalStore } from '../store/terminalStore';
 import { homeDir } from '@tauri-apps/api/path';
 import { open } from '@tauri-apps/plugin-dialog';
 import type { WorktreeInfo, WorktreeDetectResult } from '../types/git';
+import { CLAUDE_MODELS, type ClaudeModelId } from '../lib/models';
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
@@ -45,7 +46,7 @@ export function NewTerminalModal() {
   const [error, setError] = useState<string | null>(null);
   const [defaultDirectory, setDefaultDirectory] = useState('');
   const [useWorktree, setUseWorktree] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<'default' | 'opus' | 'sonnet' | 'haiku'>('default');
+  const [selectedModel, setSelectedModel] = useState<ClaudeModelId>('default');
   const [selectedEffort, setSelectedEffort] = useState<'default' | 'low' | 'medium' | 'high'>('default');
 
   // Worktree state
@@ -567,20 +568,17 @@ export function NewTerminalModal() {
           <div>
             <label className="block text-text-secondary text-[12px] mb-1.5">Model</label>
             <div className="flex gap-1.5">
-              {(['default', 'opus', 'sonnet', 'haiku'] as const).map((model) => (
+              {CLAUDE_MODELS.map(({ id, label, badge }) => (
                 <button
-                  key={model}
-                  onClick={() => setSelectedModel(model)}
+                  key={id}
+                  onClick={() => setSelectedModel(id)}
                   className={`px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors ${
-                    selectedModel === model
-                      ? model === 'opus' ? 'bg-purple-500/20 text-purple-400 ring-1 ring-purple-500/30'
-                      : model === 'sonnet' ? 'bg-blue-500/20 text-blue-400 ring-1 ring-blue-500/30'
-                      : model === 'haiku' ? 'bg-green-500/20 text-green-400 ring-1 ring-green-500/30'
-                      : 'bg-accent-primary/10 text-accent-primary ring-1 ring-accent-primary/30'
+                    selectedModel === id
+                      ? `${badge} ring-1 ring-current/30`
                       : 'bg-bg-primary ring-1 ring-border-light text-text-secondary hover:ring-border'
                   }`}
                 >
-                  {model === 'default' ? 'Default' : model.charAt(0).toUpperCase() + model.slice(1)}
+                  {label}
                 </button>
               ))}
             </div>

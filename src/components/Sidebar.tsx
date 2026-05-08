@@ -5,6 +5,7 @@ import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { setDragData } from '../utils/dragDrop';
 import { FileTreePanel } from './FileTreePanel';
+import { modelBadge } from '../lib/models';
 
 const STATUS_COLORS = {
   Running: 'bg-success',
@@ -281,12 +282,7 @@ export function Sidebar() {
                               <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse flex-shrink-0" title={`Loop: ${instance.loopInfo.interval}`} />
                             )}
                             {instance?.model && (
-                              <span className={`text-[9px] px-1 rounded font-medium flex-shrink-0 ${
-                                instance.model === 'opus' ? 'bg-purple-500/20 text-purple-400' :
-                                instance.model === 'sonnet' ? 'bg-blue-500/20 text-blue-400' :
-                                instance.model === 'haiku' ? 'bg-green-500/20 text-green-400' :
-                                'bg-white/[0.06] text-text-tertiary'
-                              }`}>
+                              <span className={`text-[9px] px-1 rounded font-medium flex-shrink-0 ${modelBadge(instance.model)}`}>
                                 {instance.model}
                               </span>
                             )}

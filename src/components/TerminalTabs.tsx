@@ -3,6 +3,7 @@ import { Reorder } from 'framer-motion';
 import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight, Copy, File as FileIcon, AlertTriangle, Minimize2, Pin } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
+import { modelBadge } from '../lib/models';
 import { TerminalView } from './TerminalView';
 import { TerminalGrid } from './TerminalGrid';
 import { SplitView } from './SplitView';
@@ -294,12 +295,7 @@ export function TerminalTabs() {
                   )}
                   {/* Badges */}
                   {model && (
-                    <span className={`text-[9px] px-1 rounded font-medium flex-shrink-0 ${
-                      model === 'opus' ? 'bg-purple-500/20 text-purple-400' :
-                      model === 'sonnet' ? 'bg-blue-500/20 text-blue-400' :
-                      model === 'haiku' ? 'bg-green-500/20 text-green-400' :
-                      'bg-white/[0.06] text-text-tertiary'
-                    }`}>
+                    <span className={`text-[9px] px-1 rounded font-medium flex-shrink-0 ${modelBadge(model)}`}>
                       {model}
                     </span>
                   )}
