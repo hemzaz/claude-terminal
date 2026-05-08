@@ -253,3 +253,71 @@ pub fn get_default_hints() -> Vec<HintCategory> {
         },
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn get_default_hints_returns_non_empty_list() {
+        let hints = get_default_hints();
+        assert!(!hints.is_empty(), "expected at least one hint category");
+    }
+
+    #[test]
+    fn every_category_has_a_non_empty_name_and_icon() {
+        for cat in get_default_hints() {
+            assert!(!cat.name.is_empty(), "category name must not be empty");
+            assert!(!cat.icon.is_empty(), "category icon must not be empty");
+        }
+    }
+
+    #[test]
+    fn every_category_has_at_least_one_hint() {
+        for cat in get_default_hints() {
+            assert!(
+                !cat.hints.is_empty(),
+                "category '{}' has no hints",
+                cat.name
+            );
+        }
+    }
+
+    #[test]
+    fn every_hint_has_non_empty_title_command_description() {
+        for cat in get_default_hints() {
+            for hint in cat.hints {
+                assert!(!hint.title.is_empty(), "hint title must not be empty");
+                assert!(!hint.command.is_empty(), "hint command must not be empty");
+                assert!(
+                    !hint.description.is_empty(),
+                    "hint description must not be empty"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn first_category_is_top_10_commands() {
+        let hints = get_default_hints();
+        assert_eq!(hints[0].name, "Top 10 Commands");
+        assert!(hints[0].hints.len() >= 10);
+    }
+
+    #[test]
+    fn config_profile_is_serializable() {
+        let profile = ConfigProfile {
+            id: "test-id".to_string(),
+            name: "Test Profile".to_string(),
+            description: Some("A test profile".to_string()),
+            working_directory: "/tmp".to_string(),
+            claude_args: vec!["--model".to_string(), "sonnet".to_string()],
+            env_vars: HashMap::new(),
+            is_default: false,
+            last_used_at: None,
+        };
+        let json = serde_json::to_string(&profile).expect("ConfigProfile must serialize");
+        assert!(json.contains("test-id"));
+        assert!(json.contains("Test Profile"));
+    }
+}
