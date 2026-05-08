@@ -8,6 +8,122 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 
+/// Shells allowed for PTY spawning on non-Windows platforms.
+/// Defined once here; the three `create_*_terminal` methods all reference this.
+const VALID_SHELLS: &[&str] = &[
+    "/bin/bash", "/bin/sh", "/bin/zsh", "/bin/fish", "/bin/dash",
+    "/usr/bin/bash", "/usr/bin/sh", "/usr/bin/zsh", "/usr/bin/fish", "/usr/bin/dash",
+    "/usr/local/bin/bash", "/usr/local/bin/zsh", "/usr/local/bin/fish",
+    "/opt/homebrew/bin/bash", "/opt/homebrew/bin/zsh", "/opt/homebrew/bin/fish",
+];
+
+// ── PTY spawn helper ──────────────────────────────────────────────────────────
+
+/// Outputs of the shared PTY spawn path returned to each `create_*_terminal` caller.
+struct PtySpawnResult {
+    pty_pair: PtyPair,
+    writer: Arc<StdMutex<Box<dyn Write + Send>>>,
+    reader_handle: JoinHandle<()>,
+    child: Box<dyn Child + Send + Sync>,
+}
+
+/// Open a PTY pair, spawn `cmd`, start the reader thread, and return the handles.
+///
+/// This is the **single canonical PTY spawn path** shared by `create_terminal`,
+/// `create_script_terminal`, and `create_shell_terminal` (Issue #60).
+///
+/// The caller is responsible for:
+/// - building the `CommandBuilder` (program, args, cwd, env)
+/// - generating the terminal `id`
+/// - inserting the result into `TerminalManager::terminals`
+fn spawn_pty(
+    cmd: CommandBuilder,
+    id: String,
+    tx: mpsc::Sender<(String, Vec<u8>)>,
+    log_file_path: Option<String>,
+) -> Result<PtySpawnResult, String> {
+    let pty_system = native_pty_system();
+    let pty_pair = pty_system
+        .openpty(PtySize {
+            rows: 30,
+            cols: 120,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .map_err(|e| format!("Failed to open pty: {}", e))?;
+
+    // Spawn the command — keep the handle so we can kill it explicitly on close
+    let child = pty_pair
+        .slave
+        .spawn_command(cmd)
+        .map_err(|e| format!("Failed to spawn command: {}", e))?;
+
+    let mut reader = pty_pair
+        .master
+        .try_clone_reader()
+        .map_err(|e| format!("Failed to clone reader: {}", e))?;
+    let writer = Arc::new(StdMutex::new(
+        pty_pair
+            .master
+            .take_writer()
+            .map_err(|e| format!("Failed to take writer: {}", e))?,
+    ));
+
+    // Spawn reader thread.
+    // 32 KB buffer — amortizes syscall overhead for high-throughput output
+    // and reduces the number of IPC messages emitted to the frontend.
+    // `log_file_path` is Some only for Claude terminals; the Option is handled
+    // inline so no separate code path is needed.
+    let reader_handle = std::thread::spawn(move || {
+        let mut buf = [0u8; 32 * 1024];
+        // Wrap the log file in a BufWriter so fs writes batch instead of
+        // issuing one syscall per PTY chunk.
+        let mut log_file = log_file_path.and_then(|path| {
+            std::fs::File::create(&path)
+                .map_err(|e| eprintln!("Failed to create log file: {}", e))
+                .ok()
+                .map(|f| BufWriter::with_capacity(64 * 1024, f))
+        });
+        loop {
+            match reader.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    let data = buf[..n].to_vec();
+                    // Write ANSI-stripped output to log file (no-op when log_file is None)
+                    if let Some(ref mut file) = log_file {
+                        let stripped = strip_ansi_escapes::strip(&data);
+                        let _ = file.write_all(&stripped);
+                    }
+                    if tx.blocking_send((id.clone(), data)).is_err() {
+                        break;
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error reading from pty: {}", e);
+                    let _ = tx.blocking_send((
+                        id.clone(),
+                        format!("\r\n[Error reading from terminal: {}]\r\n", e).into_bytes(),
+                    ));
+                    break;
+                }
+            }
+        }
+        // Flush any pending buffered log writes before the thread exits.
+        if let Some(ref mut file) = log_file {
+            let _ = file.flush();
+        }
+    });
+
+    Ok(PtySpawnResult {
+        pty_pair,
+        writer,
+        reader_handle,
+        child,
+    })
+}
+
+// ── Data types ────────────────────────────────────────────────────────────────
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TerminalConfig {
     pub id: String,
@@ -102,17 +218,6 @@ impl TerminalManager {
             })
             .collect();
 
-        let pty_system = native_pty_system();
-
-        let pty_pair = pty_system
-            .openpty(PtySize {
-                rows: 30,
-                cols: 120,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
-            .map_err(|e| format!("Failed to open pty: {}", e))?;
-
         // Spawn claude directly so the process exits when claude finishes,
         // allowing the terminal-finished event to fire for notifications
         #[cfg(target_os = "windows")]
@@ -128,14 +233,6 @@ impl TerminalManager {
 
         #[cfg(not(target_os = "windows"))]
         let mut cmd = {
-            /// Shells allowed for PTY spawning on non-Windows platforms.
-            const VALID_SHELLS: &[&str] = &[
-                "/bin/bash", "/bin/sh", "/bin/zsh", "/bin/fish", "/bin/dash",
-                "/usr/bin/bash", "/usr/bin/sh", "/usr/bin/zsh", "/usr/bin/fish", "/usr/bin/dash",
-                "/usr/local/bin/bash", "/usr/local/bin/zsh", "/usr/local/bin/fish",
-                "/opt/homebrew/bin/bash", "/opt/homebrew/bin/zsh", "/opt/homebrew/bin/fish",
-            ];
-
             let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
             // Validate $SHELL against allowlist
             let shell = if VALID_SHELLS.contains(&shell.as_str()) {
@@ -175,10 +272,6 @@ impl TerminalManager {
             cmd.env(key, value);
         }
 
-        // Spawn the command — keep the handle so we can kill it explicitly on close
-        let child = pty_pair.slave.spawn_command(cmd)
-            .map_err(|e| format!("Failed to spawn command: {}", e))?;
-
         let id = Uuid::new_v4().to_string();
         let config = TerminalConfig {
             id: id.clone(),
@@ -194,56 +287,8 @@ impl TerminalManager {
             pinned: false,
         };
 
-        let mut reader = pty_pair.master.try_clone_reader()
-            .map_err(|e| format!("Failed to clone reader: {}", e))?;
-        let writer = Arc::new(StdMutex::new(
-            pty_pair.master.take_writer()
-                .map_err(|e| format!("Failed to take writer: {}", e))?
-        ));
-
-        // Spawn reader thread
-        let terminal_id = id.clone();
-        let reader_handle = std::thread::spawn(move || {
-            // 32 KB buffer — amortizes syscall overhead for high-throughput output
-            // and reduces the number of IPC messages emitted to the frontend.
-            let mut buf = [0u8; 32 * 1024];
-            // Wrap the log file in a BufWriter so fs writes batch instead of
-            // issuing one syscall per PTY chunk.
-            let mut log_file = log_file_path.and_then(|path| {
-                std::fs::File::create(&path)
-                    .map_err(|e| eprintln!("Failed to create log file: {}", e))
-                    .ok()
-                    .map(|f| BufWriter::with_capacity(64 * 1024, f))
-            });
-            loop {
-                match reader.read(&mut buf) {
-                    Ok(0) => break,
-                    Ok(n) => {
-                        let data = buf[..n].to_vec();
-                        // Write ANSI-stripped output to log file
-                        if let Some(ref mut file) = log_file {
-                            let stripped = strip_ansi_escapes::strip(&data);
-                            let _ = file.write_all(&stripped);
-                        }
-                        if tx.blocking_send((terminal_id.clone(), data)).is_err() {
-                            break;
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!("Error reading from pty: {}", e);
-                        let _ = tx.blocking_send((
-                            terminal_id.clone(),
-                            format!("\r\n[Error reading from terminal: {}]\r\n", e).into_bytes(),
-                        ));
-                        break;
-                    }
-                }
-            }
-            // Flush any pending buffered log writes before the thread exits.
-            if let Some(ref mut file) = log_file {
-                let _ = file.flush();
-            }
-        });
+        let PtySpawnResult { pty_pair, writer, reader_handle, child } =
+            spawn_pty(cmd, id.clone(), tx, log_file_path)?;
 
         self.terminals.insert(
             id.clone(),
@@ -275,16 +320,6 @@ impl TerminalManager {
             return Err(format!("Invalid script name: '{}'", script_name));
         }
 
-        let pty_system = native_pty_system();
-        let pty_pair = pty_system
-            .openpty(PtySize {
-                rows: 30,
-                cols: 120,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
-            .map_err(|e| format!("Failed to open pty: {}", e))?;
-
         #[cfg(target_os = "windows")]
         let cmd = {
             let mut c = CommandBuilder::new("cmd.exe");
@@ -297,12 +332,6 @@ impl TerminalManager {
 
         #[cfg(not(target_os = "windows"))]
         let cmd = {
-            const VALID_SHELLS: &[&str] = &[
-                "/bin/bash", "/bin/sh", "/bin/zsh", "/bin/fish", "/bin/dash",
-                "/usr/bin/bash", "/usr/bin/sh", "/usr/bin/zsh", "/usr/bin/fish", "/usr/bin/dash",
-                "/usr/local/bin/bash", "/usr/local/bin/zsh", "/usr/local/bin/fish",
-                "/opt/homebrew/bin/bash", "/opt/homebrew/bin/zsh", "/opt/homebrew/bin/fish",
-            ];
             let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
             let shell = if VALID_SHELLS.contains(&shell.as_str()) { shell } else { "/bin/bash".to_string() };
             let mut c = CommandBuilder::new(&shell);
@@ -322,10 +351,6 @@ impl TerminalManager {
             cmd.cwd(&working_directory);
         }
 
-        // Keep child handle for explicit kill on close
-        let child = pty_pair.slave.spawn_command(cmd)
-            .map_err(|e| format!("Failed to spawn npm run {}: {}", script_name, e))?;
-
         let id = Uuid::new_v4().to_string();
         let config = TerminalConfig {
             id: id.clone(),
@@ -343,33 +368,8 @@ impl TerminalManager {
             pinned: false,
         };
 
-        let mut reader = pty_pair.master.try_clone_reader()
-            .map_err(|e| format!("Failed to clone reader: {}", e))?;
-        let writer = Arc::new(StdMutex::new(
-            pty_pair.master.take_writer()
-                .map_err(|e| format!("Failed to take writer: {}", e))?
-        ));
-
-        let terminal_id = id.clone();
-        let reader_handle = std::thread::spawn(move || {
-            let mut buf = [0u8; 32 * 1024];
-            loop {
-                match reader.read(&mut buf) {
-                    Ok(0) => break,
-                    Ok(n) => {
-                        let data = buf[..n].to_vec();
-                        if tx.blocking_send((terminal_id.clone(), data)).is_err() { break; }
-                    }
-                    Err(e) => {
-                        let _ = tx.blocking_send((
-                            terminal_id.clone(),
-                            format!("\r\n[Error: {}]\r\n", e).into_bytes(),
-                        ));
-                        break;
-                    }
-                }
-            }
-        });
+        let PtySpawnResult { pty_pair, writer, reader_handle, child } =
+            spawn_pty(cmd, id.clone(), tx, None)?;
 
         self.terminals.insert(
             id.clone(),
@@ -395,16 +395,6 @@ impl TerminalManager {
         working_directory: String,
         tx: mpsc::Sender<(String, Vec<u8>)>,
     ) -> Result<TerminalConfig, String> {
-        let pty_system = native_pty_system();
-        let pty_pair = pty_system
-            .openpty(PtySize {
-                rows: 30,
-                cols: 120,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
-            .map_err(|e| format!("Failed to open pty: {}", e))?;
-
         #[cfg(target_os = "windows")]
         let cmd = {
             // ComSpec is whatever the user has set as their shell — typically
@@ -416,12 +406,6 @@ impl TerminalManager {
 
         #[cfg(not(target_os = "windows"))]
         let cmd = {
-            const VALID_SHELLS: &[&str] = &[
-                "/bin/bash", "/bin/sh", "/bin/zsh", "/bin/fish", "/bin/dash",
-                "/usr/bin/bash", "/usr/bin/sh", "/usr/bin/zsh", "/usr/bin/fish", "/usr/bin/dash",
-                "/usr/local/bin/bash", "/usr/local/bin/zsh", "/usr/local/bin/fish",
-                "/opt/homebrew/bin/bash", "/opt/homebrew/bin/zsh", "/opt/homebrew/bin/fish",
-            ];
             let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
             let shell = if VALID_SHELLS.contains(&shell.as_str()) { shell } else { "/bin/bash".to_string() };
             let mut c = CommandBuilder::new(&shell);
@@ -434,10 +418,6 @@ impl TerminalManager {
         if !working_directory.is_empty() {
             cmd.cwd(&working_directory);
         }
-
-        // Keep child handle for explicit kill on close
-        let child = pty_pair.slave.spawn_command(cmd)
-            .map_err(|e| format!("Failed to spawn shell: {}", e))?;
 
         let id = Uuid::new_v4().to_string();
         let config = TerminalConfig {
@@ -456,33 +436,8 @@ impl TerminalManager {
             pinned: false,
         };
 
-        let mut reader = pty_pair.master.try_clone_reader()
-            .map_err(|e| format!("Failed to clone reader: {}", e))?;
-        let writer = Arc::new(StdMutex::new(
-            pty_pair.master.take_writer()
-                .map_err(|e| format!("Failed to take writer: {}", e))?
-        ));
-
-        let terminal_id = id.clone();
-        let reader_handle = std::thread::spawn(move || {
-            let mut buf = [0u8; 32 * 1024];
-            loop {
-                match reader.read(&mut buf) {
-                    Ok(0) => break,
-                    Ok(n) => {
-                        let data = buf[..n].to_vec();
-                        if tx.blocking_send((terminal_id.clone(), data)).is_err() { break; }
-                    }
-                    Err(e) => {
-                        let _ = tx.blocking_send((
-                            terminal_id.clone(),
-                            format!("\r\n[Error: {}]\r\n", e).into_bytes(),
-                        ));
-                        break;
-                    }
-                }
-            }
-        });
+        let PtySpawnResult { pty_pair, writer, reader_handle, child } =
+            spawn_pty(cmd, id.clone(), tx, None)?;
 
         self.terminals.insert(
             id.clone(),
@@ -641,5 +596,68 @@ impl TerminalManager {
         } else {
             Err("Terminal not found".to_string())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use portable_pty::CommandBuilder;
+
+    /// Happy-path test: `spawn_pty` must open a PTY, spawn a trivial command,
+    /// and return valid handles without panicking.
+    #[test]
+    fn spawn_pty_happy_path() {
+        let (tx, _rx) = mpsc::channel::<(String, Vec<u8>)>(16);
+
+        #[cfg(target_os = "windows")]
+        let cmd = {
+            let mut c = CommandBuilder::new("cmd.exe");
+            c.arg("/C");
+            c.arg("exit");
+            c
+        };
+        #[cfg(not(target_os = "windows"))]
+        let cmd = {
+            let mut c = CommandBuilder::new("/bin/sh");
+            c.arg("-c");
+            c.arg("true");
+            c
+        };
+
+        let result = spawn_pty(cmd, "test-id".to_string(), tx, None);
+        assert!(result.is_ok(), "spawn_pty should succeed: {:?}", result.err());
+    }
+
+    /// Verify that `spawn_pty` with a log file path accepts the parameter
+    /// and returns valid handles (file creation is async in the reader thread).
+    #[test]
+    fn spawn_pty_with_log_file_path() {
+        let tmp = std::env::temp_dir().join("ct_spawn_pty_test.log");
+        let log_path = tmp.to_str().unwrap().to_string();
+
+        let (tx, _rx) = mpsc::channel::<(String, Vec<u8>)>(16);
+
+        #[cfg(not(target_os = "windows"))]
+        let cmd = {
+            let mut c = CommandBuilder::new("/bin/sh");
+            c.arg("-c");
+            c.arg("echo hello");
+            c
+        };
+        #[cfg(target_os = "windows")]
+        let cmd = {
+            let mut c = CommandBuilder::new("cmd.exe");
+            c.arg("/C");
+            c.arg("echo hello");
+            c
+        };
+
+        let result = spawn_pty(cmd, "test-log-id".to_string(), tx, Some(log_path.clone()));
+        assert!(result.is_ok(), "spawn_pty with log_file should succeed: {:?}", result.err());
+
+        // Brief pause to let the reader thread run, then clean up
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let _ = std::fs::remove_file(&tmp);
     }
 }
