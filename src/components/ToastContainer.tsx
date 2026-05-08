@@ -44,6 +44,7 @@ function ToastItem({ id, type, title, message, duration, onClick }: {
   title: string;
   message?: string;
   duration: number;
+  /** Optional click handler — clicking the toast body calls this then auto-dismisses the toast. */
   onClick?: () => void;
 }) {
   const removeToast = useToastStore((s) => s.removeToast);

@@ -256,6 +256,7 @@ export const useAppStore = create<AppState>()(
       // macOS update source — defaults to Homebrew (cleanest UX, no quarantine
       // re-prompts). User can switch to in-app updater from Settings.
       macUpdateSource: 'homebrew' as const,
+      seenUpdateSourceToast: false,
 
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       toggleSidebarCollapse: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
@@ -523,7 +524,6 @@ export const useAppStore = create<AppState>()(
 
       // macOS update source
       setMacUpdateSource: (source) => set({ macUpdateSource: source }),
-      seenUpdateSourceToast: false,
       setSeenUpdateSourceToast: (seen) => set({ seenUpdateSourceToast: seen }),
     }),
     {
