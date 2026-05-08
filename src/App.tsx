@@ -94,7 +94,7 @@ interface SavedTerminalConfig {
 }
 
 function App() {
-  const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, orchestrationOpen, activeModal, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openModal, seenUpdateSourceToast, setSeenUpdateSourceToast, globalHotkey, autoHideOnBlur } = useAppStore();
+  const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, orchestrationOpen, activeModal, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openModal, seenUpdateSourceToast, setSeenUpdateSourceToast, globalHotkey, autoHideOnBlur, loadKeybindings } = useAppStore();
   const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal } = useTerminalStore();
   const [showSetup, setShowSetup] = useState<boolean | null>(null);
   const { notify } = useNotification();
@@ -156,6 +156,12 @@ function App() {
     const enabled = useAppStore.getState().errorReportingEnabled;
     invoke('set_error_reporting_enabled', { enabled }).catch(() => {});
   }, []);
+
+  // Load keybinding overrides from disk on boot. Overrides are applied immediately;
+  // changes to the file require a restart.
+  useEffect(() => {
+    loadKeybindings();
+  }, [loadKeybindings]);
 
   // Register the global hotkey whenever the stored value changes.
   // An empty string disables it (Rust side unregisters all before re-registering).
