@@ -31,14 +31,9 @@ pub async fn create_terminal(
         // PTY reader thread under load.
         let (tx, mut rx) = mpsc::channel::<(String, Vec<u8>)>(1000);
 
-        // Compute log file path
+        // Compute log file path (single canonical source — Issue #64)
         let log_path = {
-            let data_dir = directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
-                .ok_or("Failed to get project directories")?
-                .data_dir()
-                .to_path_buf();
-            let logs_dir = data_dir.join("logs");
-            std::fs::create_dir_all(&logs_dir).map_err(|e| e.to_string())?;
+            let logs_dir = super::shared::app_logs_dir()?;
             let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
             let filename = format!("{}_{}.log", uuid::Uuid::new_v4(), timestamp);
             logs_dir.join(filename).to_string_lossy().to_string()

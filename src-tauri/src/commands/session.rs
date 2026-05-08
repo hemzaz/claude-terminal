@@ -2,7 +2,7 @@ use crate::database::SessionHistoryEntry;
 use crate::AppState;
 use tauri::{command, State};
 
-use super::shared::{shell_command, wrap_cmd};
+use super::shared::{canonical_in_logs, canonical_logs_dir, shell_command, wrap_cmd};
 
 /// Model used for auto-summarising session logs.
 /// Change this single constant to switch the summariser model globally.
@@ -22,23 +22,8 @@ pub async fn get_session_history(
 #[command]
 pub async fn read_log_file(path: String) -> Result<String, String> {
     wrap_cmd("read_log_file", async move {
-        // Validate path is under the logs directory
-        let data_dir = directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
-            .ok_or("Failed to get project directories")?
-            .data_dir()
-            .to_path_buf();
-        let logs_dir = data_dir.join("logs");
-        let canonical_path = std::path::Path::new(&path)
-            .canonicalize()
-            .map_err(|e| format!("Invalid path: {}", e))?;
-        std::fs::create_dir_all(&logs_dir)
-            .map_err(|e| format!("Failed to create logs directory: {}", e))?;
-        let canonical_logs = logs_dir
-            .canonicalize()
-            .map_err(|e| format!("Failed to resolve logs directory: {}", e))?;
-        if !canonical_path.starts_with(&canonical_logs) {
-            return Err("Access denied: path is not under logs directory".to_string());
-        }
+        // Validate path is under the logs directory (single canonical source — Issue #64)
+        let canonical_path = canonical_in_logs(&path)?;
         // Cap at 2 MB — prevents DoS via huge/symlinked logs and matches
         // what the UI can reasonably render in a single read.
         const MAX_LOG_BYTES: usize = 2 * 1024 * 1024;
@@ -63,18 +48,9 @@ pub async fn delete_session_history(
     wrap_cmd("delete_session_history", async move {
         // Delete log file if it exists, but only if it's under the logs directory
         if let Some(ref path) = log_path {
-            let data_dir = directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
-                .ok_or("Failed to get project directories")?
-                .data_dir()
-                .to_path_buf();
-            let logs_dir = data_dir.join("logs");
-            let _ = std::fs::create_dir_all(&logs_dir);
-            if let Ok(canonical_path) = std::path::Path::new(path).canonicalize() {
-                if let Ok(canonical_logs) = logs_dir.canonicalize() {
-                    if canonical_path.starts_with(&canonical_logs) {
-                        let _ = std::fs::remove_file(&canonical_path);
-                    }
-                }
+            // canonical_in_logs validates path-traversal; ignore errors (file may not exist)
+            if let Ok(canonical_path) = canonical_in_logs(path) {
+                let _ = std::fs::remove_file(&canonical_path);
             }
         }
         let db = state.db.lock().await;
@@ -102,25 +78,11 @@ pub async fn get_session_log(
             None => return Ok(None),
         };
 
-        // Validate path is under the logs directory
-        let data_dir = directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
-            .ok_or("Failed to get project directories")?
-            .data_dir()
-            .to_path_buf();
-        let logs_dir = data_dir.join("logs");
-        std::fs::create_dir_all(&logs_dir)
-            .map_err(|e| format!("Failed to create logs directory: {}", e))?;
-
-        let canonical_path = match std::path::Path::new(&path).canonicalize() {
+        // Validate path is under the logs directory (Issue #64)
+        let canonical_path = match canonical_in_logs(&path) {
             Ok(p) => p,
-            Err(_) => return Ok(None), // Log file may have been deleted
+            Err(_) => return Ok(None), // Log file may have been deleted or is outside logs dir
         };
-        let canonical_logs = logs_dir
-            .canonicalize()
-            .map_err(|e| format!("Failed to resolve logs directory: {}", e))?;
-        if !canonical_path.starts_with(&canonical_logs) {
-            return Ok(None);
-        }
 
         // Read up to 512 KB
         match std::fs::read(&canonical_path) {
@@ -142,25 +104,11 @@ pub async fn get_session_log(
 #[command]
 pub async fn summarize_session(log_path: String) -> Result<Option<String>, String> {
     wrap_cmd("summarize_session", async move {
-        // Validate path is under the logs directory
-        let data_dir = directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
-            .ok_or("Failed to get project directories")?
-            .data_dir()
-            .to_path_buf();
-        let logs_dir = data_dir.join("logs");
-        std::fs::create_dir_all(&logs_dir)
-            .map_err(|e| format!("Failed to create logs directory: {}", e))?;
-
-        let canonical_path = match std::path::Path::new(&log_path).canonicalize() {
+        // Validate path is under the logs directory (Issue #64)
+        let canonical_path = match canonical_in_logs(&log_path) {
             Ok(p) => p,
             Err(_) => return Ok(None),
         };
-        let canonical_logs = logs_dir
-            .canonicalize()
-            .map_err(|e| format!("Failed to resolve logs directory: {}", e))?;
-        if !canonical_path.starts_with(&canonical_logs) {
-            return Err("Access denied: path is not under logs directory".to_string());
-        }
 
         // Read log file content (capped at 100KB)
         let bytes = match std::fs::read(&canonical_path) {
@@ -175,7 +123,6 @@ pub async fn summarize_session(log_path: String) -> Result<Option<String>, Strin
         };
         let log_content = String::from_utf8_lossy(truncated);
 
-        // Strip ANSI escape sequences
         let ansi_re =
             regex::Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\x1b\[.*?[A-Za-z]")
                 .unwrap();
@@ -292,21 +239,7 @@ fn strip_ansi_for_export(text: &str) -> String {
 }
 
 fn read_and_clean_log(log_path: &str) -> Result<String, String> {
-    let data_dir = directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
-        .ok_or("Failed to get project directories")?
-        .data_dir()
-        .to_path_buf();
-    let logs_dir = data_dir.join("logs");
-    let _ = std::fs::create_dir_all(&logs_dir);
-    let canonical_logs = logs_dir
-        .canonicalize()
-        .map_err(|e| format!("Failed to resolve logs dir: {e}"))?;
-    let canonical_path = std::path::Path::new(log_path)
-        .canonicalize()
-        .map_err(|e| format!("Invalid log path: {e}"))?;
-    if !canonical_path.starts_with(&canonical_logs) {
-        return Err("Access denied: path is not under logs directory".into());
-    }
+    let canonical_path = canonical_in_logs(log_path)?;
     const MAX_BYTES: usize = 2 * 1024 * 1024;
     let bytes = std::fs::read(&canonical_path)
         .map_err(|e| format!("Failed to read log: {e}"))?;
@@ -448,13 +381,8 @@ pub async fn search_session_history(
         )
         .unwrap();
 
-        let data_dir = directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
-            .ok_or("Failed to get project directories")?
-            .data_dir()
-            .to_path_buf();
-        let logs_dir = data_dir.join("logs");
-        let _ = std::fs::create_dir_all(&logs_dir);
-        let canonical_logs = logs_dir.canonicalize().ok();
+        // Single canonical source for the logs directory (Issue #64)
+        let canonical_logs = canonical_logs_dir().ok();
 
         let mut results: Vec<SessionSearchResult> = Vec::new();
 
