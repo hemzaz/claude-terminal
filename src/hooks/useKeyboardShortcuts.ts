@@ -273,6 +273,16 @@ export function useKeyboardShortcuts() {
         return;
       }
 
+      // terminal.broadcast.toggle — Cmd+Shift+B / Ctrl+Shift+B
+      if (matchesKeyCombo(e, effectiveCombo('terminal.broadcast.toggle', 'Cmd+Shift+B', ov))) {
+        e.preventDefault();
+        const activeId = activeIdRef.current;
+        if (activeId) {
+          useTerminalStore.getState().toggleBroadcastMember(activeId);
+        }
+        return;
+      }
+
       // Tab cycling — Ctrl+Tab / Ctrl+Shift+Tab (not overridable)
       if (ctrl && e.key === 'Tab') {
         e.preventDefault();

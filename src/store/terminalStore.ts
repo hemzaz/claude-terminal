@@ -101,6 +101,11 @@ interface TerminalState {
   openShellTerminal: (label: string, cwd: string) => Promise<string>;
   closeShellTerminal: (id: string) => Promise<void>;
   setActiveBottomTerminal: (id: string | null) => void;
+
+  // Broadcast group — session-only, not persisted across restarts
+  broadcastGroupIds: Set<string>;
+  toggleBroadcastMember: (id: string) => void;
+  clearBroadcastGroup: () => void;
 }
 
 // ---- Context window usage parsing ----------------------------------------
@@ -146,6 +151,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   bottomTerminalIds: [],
   activeBottomTerminalId: null,
   closedTerminalHistory: [],
+  broadcastGroupIds: new Set(),
 
   createTerminal: async (label, workingDirectory, claudeArgs, envVars, colorTag, nickname, restoredOutput) => {
     try {
@@ -225,6 +231,9 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       const newChildren = new Map(state.scriptChildren);
       newChildren.delete(id);
 
+      const newBroadcast = new Set(state.broadcastGroupIds);
+      newBroadcast.delete(id);
+
       // Only pick a fallback from terminals that actually appear in the main
       // tab bar — script children and bottom-pane shells must never become
       // the "active tab".
@@ -237,6 +246,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
         unreadTerminalIds: newUnread,
         gitInfoCache: newGitCache,
         scriptChildren: newChildren,
+        broadcastGroupIds: newBroadcast,
         activeTerminalId: state.activeTerminalId === id
           ? (remainingIds[0] || null)
           : state.activeTerminalId,
@@ -563,4 +573,16 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   },
 
   setActiveBottomTerminal: (id) => set({ activeBottomTerminalId: id }),
+
+  toggleBroadcastMember: (id) => set((state) => {
+    const next = new Set(state.broadcastGroupIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    return { broadcastGroupIds: next };
+  }),
+
+  clearBroadcastGroup: () => set({ broadcastGroupIds: new Set() }),
 }));

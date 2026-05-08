@@ -205,6 +205,15 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       writeToTerminal(terminalId, data).catch((err) => {
         console.error(`Failed to write to terminal ${terminalId}:`, err);
       });
+      // Fan out to broadcast group peers when this terminal is a member
+      const { broadcastGroupIds } = useTerminalStore.getState();
+      if (broadcastGroupIds.has(terminalId)) {
+        broadcastGroupIds.forEach((peerId) => {
+          if (peerId !== terminalId) {
+            useTerminalStore.getState().writeToTerminal(peerId, data).catch(() => {});
+          }
+        });
+      }
     });
 
     const resizeObserver = new ResizeObserver(() => {

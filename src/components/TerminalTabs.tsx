@@ -1,6 +1,7 @@
 import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { Reorder } from 'framer-motion';
-import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight, Copy, File as FileIcon, AlertTriangle, Minimize2, Pin } from 'lucide-react';
+import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight, Copy, File as FileIcon, AlertTriangle, Minimize2, Pin, Radio } from 'lucide-react';
+import { BroadcastPopover } from './BroadcastPopover';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { modelBadge } from '../lib/models';
@@ -23,7 +24,7 @@ function fileBasename(p: string): string {
 
 
 export function TerminalTabs() {
-  const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, unreadTerminalIds, gitInfoCache, reorderTerminals, scriptChildren, closeScript, writeToTerminal, setPinned } = useTerminalStore();
+  const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, unreadTerminalIds, gitInfoCache, reorderTerminals, scriptChildren, closeScript, writeToTerminal, setPinned, broadcastGroupIds } = useTerminalStore();
   const { openModal, gridMode, toggleGridMode, addToGrid, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, setSplitTerminals, setSplitMode, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree } = useAppStore();
 
   // Selecting a terminal clears the file-tab focus (so terminal view shows),
@@ -51,6 +52,9 @@ export function TerminalTabs() {
         }),
     [terminals]
   );
+
+  // Broadcast popover
+  const [broadcastPopoverOpen, setBroadcastPopoverOpen] = useState(false);
 
   // Right-click context menu state
   const [contextMenu, setContextMenu] = useState<{ terminalId: string; x: number; y: number } | null>(null);
@@ -261,7 +265,7 @@ export function TerminalTabs() {
                       : activeTerminalId === terminal.id && !activeFilePath
                         ? 'bg-elevation-0 text-text-primary'
                         : 'hover:bg-white/[0.045] text-text-secondary'
-                  }`}
+                  } ${broadcastGroupIds.has(terminal.id) ? 'ring-1 ring-inset ring-orange-400/50' : ''}`}
                 >
                   {/* IntelliJ-style bottom underline for active tab */}
                   {((activeTerminalId === terminal.id && !activeFilePath) || splitDropTargetId === terminal.id) && (
@@ -304,6 +308,11 @@ export function TerminalTabs() {
                   )}
                   {loopInfo && (
                     <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse flex-shrink-0" title={`Loop: ${loopInfo.interval}`} />
+                  )}
+                  {broadcastGroupIds.has(terminal.id) && (
+                    <span title="Broadcasting" className="flex-shrink-0">
+                      <Radio size={10} className="text-orange-400 animate-pulse" />
+                    </span>
                   )}
                   {/* Context warning badge — visible at ≥80% */}
                   {contextFraction !== null && contextFraction >= 0.8 && (
@@ -486,8 +495,32 @@ export function TerminalTabs() {
           })()}
         </div>
 
+        {/* Broadcast toggle */}
+        <div className="relative flex items-center gap-1 ml-1 flex-shrink-0">
+          {broadcastGroupIds.size > 0 && (
+            <span className="text-[10.5px] text-orange-400 mr-1 uppercase tracking-wide">
+              {broadcastGroupIds.size} live
+            </span>
+          )}
+          <button
+            onClick={() => setBroadcastPopoverOpen((o) => !o)}
+            className={`flex items-center gap-1.5 h-7 px-2 rounded-[4px] text-[11.5px] font-medium transition-colors ${
+              broadcastGroupIds.size >= 2
+                ? 'bg-orange-500/18 text-orange-400 ring-1 ring-inset ring-orange-400/30 hover:bg-orange-500/25'
+                : 'hover:bg-white/[0.06] text-text-secondary hover:text-text-primary'
+            }`}
+            title="Broadcast group (Cmd+Shift+B)"
+          >
+            <Radio size={13} strokeWidth={1.75} />
+            <span className="hidden sm:inline">Broadcast</span>
+          </button>
+          {broadcastPopoverOpen && (
+            <BroadcastPopover onClose={() => setBroadcastPopoverOpen(false)} />
+          )}
+        </div>
+
         {/* Grid Mode Toggle */}
-        <div className="flex items-center gap-1 ml-2 mr-1 flex-shrink-0">
+        <div className="flex items-center gap-1 ml-1 mr-1 flex-shrink-0">
           {gridTerminalIds.length > 0 && (
             <span className="text-[10.5px] text-text-tertiary mr-1 uppercase tracking-wide">
               {gridTerminalIds.length} in grid
