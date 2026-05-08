@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useAppStore } from '../store/appStore';
+import { reportError as catchError } from '../lib/reportError';
 
 /**
  * Syncs persisted app settings to the Rust backend on mount and on change:
@@ -19,7 +20,7 @@ export function useAppSettingsSync() {
   // The Rust flag defaults to false, so until this fires no panics are reported.
   useEffect(() => {
     const enabled = useAppStore.getState().errorReportingEnabled;
-    invoke('set_error_reporting_enabled', { enabled }).catch(() => {});
+    invoke('set_error_reporting_enabled', { enabled }).catch(catchError('set_error_reporting_enabled'));
   }, []);
 
   // Load keybinding overrides from disk on boot. Overrides are applied immediately;
@@ -31,7 +32,7 @@ export function useAppSettingsSync() {
   // Register the global hotkey whenever the stored value changes.
   // An empty string disables it (Rust side unregisters all before re-registering).
   useEffect(() => {
-    invoke('set_global_hotkey', { shortcut: globalHotkey }).catch(() => {});
+    invoke('set_global_hotkey', { shortcut: globalHotkey }).catch(catchError('set_global_hotkey'));
   }, [globalHotkey]);
 
   // Auto-hide on blur: when the window loses focus, hide it so the hotkey can
@@ -42,7 +43,7 @@ export function useAppSettingsSync() {
     let unlisten: (() => void) | undefined;
     appWindow
       .onFocusChanged(({ payload: focused }) => {
-        if (!focused) appWindow.hide().catch(() => {});
+        if (!focused) appWindow.hide().catch(() => { /* non-fatal: window hide can race with OS focus events */ });
       })
       .then((fn) => { unlisten = fn; });
     return () => { unlisten?.(); };
