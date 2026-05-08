@@ -1,4 +1,4 @@
-import { Component, useEffect, useState } from 'react';
+import { Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { reportError } from './lib/errorReporter';
@@ -26,14 +26,15 @@ import { MemoryEditor } from './components/MemoryEditor';
 import { StatusBar } from './components/StatusBar';
 import { ToastContainer } from './components/ToastContainer';
 import { useAppStore } from './store/appStore';
-import { useTerminalStore } from './store/terminalStore';
-import { toast } from './store/toastStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
-import { useNotification } from './hooks/useNotification';
-import { listen } from '@tauri-apps/api/event';
-import { invoke } from '@tauri-apps/api/core';
-import { getVersion } from '@tauri-apps/api/app';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { useAppSetup } from './hooks/useAppSetup';
+import { useAppWhatsNew } from './hooks/useAppWhatsNew';
+import { useAppUpdateSourceToast } from './hooks/useAppUpdateSourceToast';
+import { useAppSettingsSync } from './hooks/useAppSettingsSync';
+import { useAppTelemetry } from './hooks/useAppTelemetry';
+import { useAppTerminalEvents } from './hooks/useAppTerminalEvents';
+import { useAppMenuEvents } from './hooks/useAppMenuEvents';
+import { useAppSession } from './hooks/useAppSession';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
   constructor(props: { children: ReactNode }) {
@@ -73,331 +74,19 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
   }
 }
 
-interface SystemStatus {
-  node_installed: boolean;
-  node_version: string | null;
-  npm_installed: boolean;
-  npm_version: string | null;
-  claude_installed: boolean;
-  claude_version: string | null;
-}
-
-interface SavedTerminalConfig {
-  id: string;
-  label: string;
-  nickname: string | null;
-  working_directory: string;
-  claude_args: string[];
-  env_vars: Record<string, string>;
-  color_tag: string | null;
-  pinned?: boolean;
-}
-
 function App() {
-  const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, orchestrationOpen, activeModal, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openModal, seenUpdateSourceToast, setSeenUpdateSourceToast, globalHotkey, autoHideOnBlur, loadKeybindings } = useAppStore();
-  const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal } = useTerminalStore();
-  const [showSetup, setShowSetup] = useState<boolean | null>(null);
-  const { notify } = useNotification();
+  const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, orchestrationOpen, activeModal, showRestoreBanner, pendingRestoreConfigs } = useAppStore();
 
   useKeyboardShortcuts();
+  const { showSetup, setShowSetup } = useAppSetup();
+  useAppWhatsNew(showSetup);
+  useAppUpdateSourceToast(showSetup);
+  useAppSettingsSync();
+  useAppTelemetry(showSetup);
+  useAppTerminalEvents();
+  useAppMenuEvents();
+  const { handleRestore, handleDismissRestore } = useAppSession(showSetup);
 
-  useEffect(() => {
-    // Check if Claude Code is installed on startup
-    const checkSetup = async () => {
-      try {
-        const status = await invoke<SystemStatus>('check_system_requirements');
-        setShowSetup(!status.claude_installed);
-      } catch {
-        setShowSetup(true);
-      }
-    };
-    checkSetup();
-  }, []);
-
-  // What's New check — runs after setup is confirmed
-  useEffect(() => {
-    if (showSetup !== false) return;
-
-    const checkWhatsNew = async () => {
-      try {
-        const currentVersion = await getVersion();
-        if (!lastSeenVersion) {
-          // Fresh install — just record the current version, no popup
-          setLastSeenVersion(currentVersion);
-        } else if (lastSeenVersion !== currentVersion) {
-          openModal('whatsNew');
-        }
-      } catch (err) {
-        console.error('Failed to check version for What\'s New:', err);
-      }
-    };
-
-    checkWhatsNew();
-  }, [showSetup, lastSeenVersion, setLastSeenVersion, openModal]);
-
-  // First-launch macOS hint: surface the update-source toggle (Homebrew vs in-app).
-  // Only fires once; seenUpdateSourceToast is persisted so it survives restarts.
-  useEffect(() => {
-    if (showSetup !== false) return;
-    const isMac = navigator.platform.toUpperCase().includes('MAC');
-    if (!isMac || seenUpdateSourceToast) return;
-    setSeenUpdateSourceToast(true);
-    toast.info(
-      'macOS Update Source',
-      'Updates use Homebrew by default. Tap to change in Settings.',
-      0, // indefinite — user must dismiss
-      () => openModal('settings'),
-    );
-  }, [showSetup, seenUpdateSourceToast, setSeenUpdateSourceToast, openModal]);
-
-  // Push the persisted error-reporting preference to Rust on mount.
-  // The Rust flag defaults to false, so until this fires no panics are reported.
-  useEffect(() => {
-    const enabled = useAppStore.getState().errorReportingEnabled;
-    invoke('set_error_reporting_enabled', { enabled }).catch(() => {});
-  }, []);
-
-  // Load keybinding overrides from disk on boot. Overrides are applied immediately;
-  // changes to the file require a restart.
-  useEffect(() => {
-    loadKeybindings();
-  }, [loadKeybindings]);
-
-  // Register the global hotkey whenever the stored value changes.
-  // An empty string disables it (Rust side unregisters all before re-registering).
-  useEffect(() => {
-    invoke('set_global_hotkey', { shortcut: globalHotkey }).catch(() => {});
-  }, [globalHotkey]);
-
-  // Auto-hide on blur: when the window loses focus, hide it so the hotkey can
-  // summon it again. Only active when a hotkey is configured.
-  useEffect(() => {
-    if (!autoHideOnBlur || !globalHotkey) return;
-    const appWindow = getCurrentWindow();
-    let unlisten: (() => void) | undefined;
-    appWindow
-      .onFocusChanged(({ payload: focused }) => {
-        if (!focused) appWindow.hide().catch(() => {});
-      })
-      .then((fn) => { unlisten = fn; });
-    return () => { unlisten?.(); };
-  }, [autoHideOnBlur, globalHotkey]);
-
-  // Telemetry heartbeat — fire on startup then every 5 minutes
-  useEffect(() => {
-    if (showSetup !== false) return;
-
-    const sendHeartbeat = () => {
-      const enabled = useAppStore.getState().telemetryEnabled;
-      getVersion().then((appVersion) => {
-        invoke('send_telemetry_heartbeat', { enabled, appVersion }).catch(() => {});
-      });
-    };
-
-    sendHeartbeat();
-    const interval = setInterval(sendHeartbeat, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [showSetup]);
-
-  useEffect(() => {
-    const unlisten = listen<{ id: string; data: number[] }>('terminal-output', (event) => {
-      const { id, data } = event.payload;
-      handleTerminalOutput(id, new Uint8Array(data));
-
-      // Detect loop mode from terminal output
-      try {
-        const text = new TextDecoder().decode(new Uint8Array(data));
-        const loopMatch = text.match(/loop\s+(\d+[smh])\s+(.+)/i);
-        if (loopMatch) {
-          setLoopMode(id, { interval: loopMatch[1], prompt: loopMatch[2] });
-        }
-      } catch {
-        // Ignore decode errors
-      }
-    });
-
-    return () => {
-      unlisten.then(fn => fn());
-    };
-  }, [handleTerminalOutput, setLoopMode]);
-
-  useEffect(() => {
-    const unlisten = listen<{ id: string }>('terminal-finished', (event) => {
-      const { id } = event.payload;
-
-      // Get the current terminal name from the store (always up-to-date, even after renames)
-      const terminals = useTerminalStore.getState().terminals;
-      const terminal = terminals.get(id);
-      const name = terminal?.config.nickname || terminal?.config.label || 'Terminal';
-
-      updateTerminalStatus(id, 'Stopped');
-      triggerChangesRefresh();
-
-      // Always show in-app toast
-      toast.info('Terminal Finished', `${name} has finished running.`);
-
-      if (notifyOnFinish) {
-        notify('Terminal Finished', `${name} has finished running.`);
-      }
-
-      // Auto-summarize the session
-      (async () => {
-        try {
-          // Check if we already have a summary
-          const existing = await invoke<string | null>('get_session_summary', { terminalId: id });
-          if (existing) {
-            setSessionSummary(id, existing);
-            return;
-          }
-
-          // Get the log path for this terminal
-          const sessions = await invoke<{ id: number; terminal_id: string; log_path: string | null }[]>('get_session_history');
-          const session = sessions.find(s => s.terminal_id === id);
-          if (!session?.log_path) return;
-
-          const summary = await invoke<string | null>('summarize_session', { logPath: session.log_path });
-          if (summary) {
-            await invoke('save_session_summary', { terminalId: id, summary });
-            setSessionSummary(id, summary);
-          }
-        } catch (err) {
-          console.error('Failed to summarize session:', err);
-        }
-      })();
-    });
-
-    return () => {
-      unlisten.then(fn => fn());
-    };
-  }, [notifyOnFinish, notify, updateTerminalStatus, setSessionSummary]);
-
-  // macOS native menubar events
-  useEffect(() => {
-    const unlisten = listen<string>('menu-event', (event) => {
-      const appState = useAppStore.getState();
-      switch (event.payload) {
-        case 'menu-new-terminal':
-          appState.openModal('newTerminal');
-          break;
-        case 'menu-close-terminal': {
-          const activeId = useTerminalStore.getState().activeTerminalId;
-          if (activeId) useTerminalStore.getState().closeTerminal(activeId);
-          break;
-        }
-        case 'menu-toggle-sidebar':
-          appState.toggleSidebar();
-          break;
-        case 'menu-toggle-hints':
-          appState.toggleHints();
-          break;
-        case 'menu-toggle-grid':
-          appState.toggleGridMode();
-          break;
-        case 'menu-find':
-          appState.openModal('commandPalette');
-          break;
-      }
-    });
-    return () => { unlisten.then(fn => fn()); };
-  }, []);
-
-  // Restore previous session on startup.
-  // - restoreSession=true: show restore banner for all saved tabs.
-  // - restoreSession=false: silently reopen only pinned tabs.
-  useEffect(() => {
-    if (showSetup !== false) return;
-
-    const checkLastSession = async () => {
-      try {
-        const configs = await invoke<SavedTerminalConfig[] | null>('get_last_session');
-        if (!configs || configs.length === 0) return;
-
-        if (restoreSession) {
-          setPendingRestoreConfigs(configs);
-          setShowRestoreBanner(true);
-        } else {
-          // Silently restore pinned tabs regardless of restoreSession setting
-          const pinned = configs.filter((c) => c.pinned);
-          if (pinned.length === 0) return;
-          for (const config of pinned) {
-            try {
-              await createTerminal(
-                config.label,
-                config.working_directory,
-                config.claude_args,
-                config.env_vars,
-                config.color_tag ?? undefined,
-                config.nickname ?? undefined,
-              );
-            } catch (err) {
-              console.error('Failed to restore pinned terminal:', config.label, err);
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Failed to check last session:', err);
-      }
-    };
-
-    checkLastSession();
-  }, [showSetup]);
-
-  // Auto-save session every 30 seconds
-  useEffect(() => {
-    if (showSetup !== false) return;
-
-    const interval = setInterval(() => {
-      invoke('save_session_for_restore').catch((err) => {
-        console.error('Failed to auto-save session:', err);
-      });
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, [showSetup]);
-
-  const handleRestore = async () => {
-    if (!pendingRestoreConfigs) return;
-    await invoke('clear_last_session');
-
-    // Pre-fetch log content for all terminals in parallel
-    const logPromises = pendingRestoreConfigs.map(async (config) => {
-      if (!config.id) return null;
-      try {
-        return await invoke<string | null>('get_session_log', { terminalId: config.id });
-      } catch {
-        return null;
-      }
-    });
-    const logs = await Promise.all(logPromises);
-
-    for (let i = 0; i < pendingRestoreConfigs.length; i++) {
-      const config = pendingRestoreConfigs[i];
-      try {
-        await createTerminal(
-          config.label,
-          config.working_directory,
-          config.claude_args,
-          config.env_vars,
-          config.color_tag ?? undefined,
-          config.nickname ?? undefined,
-          logs[i] ?? undefined
-        );
-      } catch (err) {
-        console.error('Failed to restore terminal:', config.label, err);
-      }
-    }
-    toast.success('Session Restored', `${pendingRestoreConfigs.length} terminal${pendingRestoreConfigs.length !== 1 ? 's' : ''} restored.`);
-    setShowRestoreBanner(false);
-    setPendingRestoreConfigs(null);
-  };
-
-  const handleDismissRestore = async () => {
-    await invoke('clear_last_session');
-    setShowRestoreBanner(false);
-    setPendingRestoreConfigs(null);
-  };
-
-  // Show loading while checking
   if (showSetup === null) {
     return (
       <div className="h-screen w-screen bg-bg-primary flex items-center justify-center">
