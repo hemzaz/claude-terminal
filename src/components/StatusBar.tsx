@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
+import { CLAUDE_MODELS } from '../lib/models';
 import {
   Terminal,
   Cpu,
@@ -13,11 +14,14 @@ import {
   LayoutGrid,
 } from 'lucide-react';
 
-const MODEL_COLORS: Record<string, { bg: string; text: string; label: string }> = {
-  opus: { bg: 'bg-purple-500/15', text: 'text-purple-400', label: 'Opus' },
-  sonnet: { bg: 'bg-blue-500/15', text: 'text-blue-400', label: 'Sonnet' },
-  haiku: { bg: 'bg-green-500/15', text: 'text-green-400', label: 'Haiku' },
-};
+// Derive status-bar widget styles from the central model registry.
+// Uses /15 opacity tints (lighter than badge chips at /20).
+const MODEL_COLORS = Object.fromEntries(
+  CLAUDE_MODELS.filter((m) => m.id !== 'default').map(({ id, label, badge }) => {
+    const [badgeBg, text] = badge.split(' ');
+    return [id, { bg: badgeBg.replace('/20', '/15'), text, label }];
+  })
+);
 
 const STATUS_COLORS: Record<string, string> = {
   Running: 'text-success',
