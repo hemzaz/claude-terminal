@@ -60,6 +60,8 @@ pub use git::{
     ScannedGitRepo, PackageScript,
 };
 
+pub use keybindings::{ensure_keybindings_file_exists, read_keybindings, open_keybindings_file};
+
 pub use profile::{save_profile, get_profiles, delete_profile};
 
 pub use session::{
