@@ -9,6 +9,8 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { useTerminalStore } from '../store/terminalStore';
 import { TerminalSearch } from './TerminalSearch';
 import { TerminalStatusBar } from './TerminalStatusBar';
+import { BlockOverlay } from './BlockOverlay';
+import { BlockParser, type Block } from '../lib/blockParser';
 import '@xterm/xterm/css/xterm.css';
 
 function formatDroppedPath(path: string): string {
@@ -61,6 +63,30 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
 
   const toggleSearch = useCallback(() => {
     setSearchVisible(prev => !prev);
+  }, []);
+
+  // Block-based output state — tracks assistant response boundaries for overlay
+  const [blocks, setBlocks] = useState<readonly Block[]>([]);
+  const [viewportY, setViewportY] = useState(0);
+  const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
+  // Ref keeps the keyboard handler (captured at effect setup time) in sync with
+  // the latest blocks array without needing to re-create the xterm instance.
+  const blocksRef = useRef<readonly Block[]>([]);
+
+  // Reads the plain text of a block from the xterm buffer and copies it.
+  const handleCopyBlock = useCallback((block: Block) => {
+    const terminal = terminalRef.current;
+    if (!terminal) return;
+    const buf = terminal.buffer.active;
+    const endLine = block.endLine === -1 ? buf.length - 1 : block.endLine;
+    const lines: string[] = [];
+    for (let y = block.startLine; y <= Math.min(endLine, buf.length - 1); y++) {
+      const line = buf.getLine(y);
+      if (line) lines.push(line.translateToString(true));
+    }
+    // Trim trailing blank lines before copying
+    while (lines.length > 0 && lines[lines.length - 1].trim() === '') lines.pop();
+    navigator.clipboard.writeText(lines.join('\n')).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -138,6 +164,31 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     // Auto-focus so keyboard input works immediately without requiring a click
     terminal.focus();
 
+    // Block parser — scan new buffer lines after each write to detect Claude
+    // prompt boundaries and emit assistant-response Block records.
+    const blockParser = new BlockParser();
+    let scannedUpTo = 0;
+    const writeParsedSub = terminal.onWriteParsed(() => {
+      const buf = terminal.buffer.active;
+      const end = buf.length;
+      let changed = false;
+      for (let y = scannedUpTo; y < end; y++) {
+        const line = buf.getLine(y);
+        if (line && blockParser.onLine(line.translateToString(true), y)) changed = true;
+      }
+      scannedUpTo = end;
+      if (changed) {
+        const next = blockParser.blocks;
+        blocksRef.current = next;
+        setBlocks(next);
+      }
+    });
+
+    // Track viewport position so BlockOverlay can map line numbers to pixels.
+    const scrollSub = terminal.onScroll((newViewportY) => {
+      setViewportY(newViewportY);
+    });
+
     // Re-focus xterm if its textarea loses focus to nothing (body) or to its
     // OWN canvas — that combo happens in WebView2 after PTY output triggers
     // React re-renders or when the user clicks the terminal canvas directly.
@@ -198,6 +249,35 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
         return false;
       }
 
+      // Cmd+Up: scroll to the previous Claude response block
+      if (e.metaKey && !e.ctrlKey && e.key === 'ArrowUp' && e.type === 'keydown') {
+        e.preventDefault();
+        const current = blocksRef.current;
+        if (current.length > 0) {
+          const vp = terminal.buffer.active.viewportY;
+          const prev = [...current].reverse().find((b) => b.startLine < vp);
+          const target = prev ?? current[current.length - 1];
+          terminal.scrollToLine(target.startLine);
+          setActiveBlockId(target.id);
+        }
+        return false;
+      }
+
+      // Cmd+Down: scroll to the next Claude response block
+      if (e.metaKey && !e.ctrlKey && e.key === 'ArrowDown' && e.type === 'keydown') {
+        e.preventDefault();
+        const current = blocksRef.current;
+        if (current.length > 0) {
+          const vp = terminal.buffer.active.viewportY;
+          const next = current.find((b) => b.startLine > vp);
+          if (next) {
+            terminal.scrollToLine(next.startLine);
+            setActiveBlockId(next.id);
+          }
+        }
+        return false;
+      }
+
       return true;
     });
 
@@ -233,6 +313,8 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     return () => {
       resizeObserver.disconnect();
       terminal.textarea?.removeEventListener('blur', handleBlur);
+      writeParsedSub.dispose();
+      scrollSub.dispose();
       searchAddonRef.current = null;
       terminalRef.current = null;
       webglAddon?.dispose();
@@ -328,6 +410,14 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
             </div>
           </div>
         )}
+        <BlockOverlay
+          blocks={blocks}
+          viewportY={viewportY}
+          activeBlockId={activeBlockId}
+          containerRef={containerRef}
+          terminal={terminalRef.current}
+          onCopy={handleCopyBlock}
+        />
       </div>
       <TerminalStatusBar terminalId={terminalId} />
     </div>
