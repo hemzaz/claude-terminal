@@ -409,3 +409,114 @@ pub async fn export_session(
     })
     .await
 }
+
+#[derive(serde::Serialize)]
+pub struct SessionSearchResult {
+    pub session_id: i64,
+    pub terminal_id: String,
+    pub label: String,
+    pub snippet: String,
+    pub line_no: usize,
+    pub timestamp: String,
+}
+
+/// Search across all session history — labels and log file contents.
+/// Returns up to 100 results, capped at 200 KB per log file.
+#[command]
+pub async fn search_session_history(
+    state: State<'_, AppState>,
+    query: String,
+) -> Result<Vec<SessionSearchResult>, String> {
+    wrap_cmd("search_session_history", async move {
+        let trimmed = query.trim().to_string();
+        if trimmed.is_empty() {
+            return Ok(vec![]);
+        }
+        let query_lower = trimmed.to_lowercase();
+
+        let entries = {
+            let db = state.db.lock().await;
+            db.get_session_history()?
+        };
+
+        let ansi_re = regex::Regex::new(
+            r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\x1b\[.*?[A-Za-z]",
+        )
+        .unwrap();
+
+        let data_dir = directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
+            .ok_or("Failed to get project directories")?
+            .data_dir()
+            .to_path_buf();
+        let logs_dir = data_dir.join("logs");
+        let _ = std::fs::create_dir_all(&logs_dir);
+        let canonical_logs = logs_dir.canonicalize().ok();
+
+        let mut results: Vec<SessionSearchResult> = Vec::new();
+
+        'outer: for entry in &entries {
+            let timestamp = entry
+                .ended_at
+                .as_deref()
+                .unwrap_or(&entry.started_at)
+                .to_string();
+
+            // Match on label
+            if entry.label.to_lowercase().contains(&query_lower) {
+                results.push(SessionSearchResult {
+                    session_id: entry.id,
+                    terminal_id: entry.terminal_id.clone(),
+                    label: entry.label.clone(),
+                    snippet: entry.label.clone(),
+                    line_no: 0,
+                    timestamp: timestamp.clone(),
+                });
+                if results.len() >= 100 {
+                    break;
+                }
+            }
+
+            // Match inside log file
+            if let Some(ref log_path) = entry.log_path {
+                if let Some(ref canonical_logs) = canonical_logs {
+                    if let Ok(canonical_path) =
+                        std::path::Path::new(log_path).canonicalize()
+                    {
+                        if canonical_path.starts_with(canonical_logs) {
+                            if let Ok(bytes) = std::fs::read(&canonical_path) {
+                                const MAX_BYTES: usize = 200 * 1024;
+                                let slice = if bytes.len() > MAX_BYTES {
+                                    &bytes[bytes.len() - MAX_BYTES..]
+                                } else {
+                                    &bytes
+                                };
+                                let content = String::from_utf8_lossy(slice);
+                                let clean = ansi_re.replace_all(&content, "");
+                                for (line_idx, line) in clean.lines().enumerate() {
+                                    if line.to_lowercase().contains(&query_lower) {
+                                        let snippet: String =
+                                            line.trim().chars().take(120).collect();
+                                        results.push(SessionSearchResult {
+                                            session_id: entry.id,
+                                            terminal_id: entry.terminal_id.clone(),
+                                            label: entry.label.clone(),
+                                            snippet,
+                                            line_no: line_idx + 1,
+                                            timestamp: timestamp.clone(),
+                                        });
+                                        if results.len() >= 100 {
+                                            break 'outer;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(results)
+    })
+    .await
+}

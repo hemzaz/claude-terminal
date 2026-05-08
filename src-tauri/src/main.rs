@@ -263,6 +263,7 @@ fn main() {
             commands::session::save_session_summary,
             commands::session::get_session_summary,
             commands::session::export_session,
+            commands::session::search_session_history,
             // snippet
             commands::snippet::save_snippet,
             commands::snippet::get_snippets,
