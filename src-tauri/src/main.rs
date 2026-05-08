@@ -206,6 +206,9 @@ fn main() {
             commands::layout::list_layout_templates,
             commands::layout::load_layout_template,
             commands::layout::delete_layout_template,
+            // cost dashboard
+            commands::cost::get_cost_stats,
+            commands::cost::export_cost_csv,
             // profile
             commands::profile::save_profile,
             commands::profile::get_profiles,

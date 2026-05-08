@@ -10,6 +10,7 @@
 mod shared;
 
 pub mod claude_config;
+pub mod cost;
 pub mod error;
 pub mod fs;
 pub mod git;
@@ -35,6 +36,8 @@ pub use claude_config::{
     list_memory_files, read_memory_file, write_memory_file, list_claude_md_files,
     MemoryFileInfo, ClaudeMdInfo,
 };
+
+pub use cost::{get_cost_stats, export_cost_csv, CostStats, SessionCostEntry, DailyCostEntry};
 
 pub use error::{report_error, set_error_reporting_enabled, FrontendErrorPayload};
 

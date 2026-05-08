@@ -23,9 +23,11 @@ import { OrchestrationPanel } from './components/OrchestrationPanel';
 import { GlobalSearchModal } from './components/GlobalSearchModal';
 import { SessionTimeline } from './components/SessionTimeline';
 import { MemoryEditor } from './components/MemoryEditor';
+import { CostDashboard } from './components/CostDashboard';
 import { StatusBar } from './components/StatusBar';
 import { ToastContainer } from './components/ToastContainer';
 import { useAppStore } from './store/appStore';
+import { useCostStore } from './store/costStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useAppSetup } from './hooks/useAppSetup';
 import { useAppWhatsNew } from './hooks/useAppWhatsNew';
@@ -76,6 +78,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
 
 function App() {
   const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, orchestrationOpen, activeModal, showRestoreBanner, pendingRestoreConfigs } = useAppStore();
+  const isCostDashboardOpen = useCostStore((s) => s.isOpen);
 
   useKeyboardShortcuts();
   const { showSetup, setShowSetup } = useAppSetup();
@@ -210,6 +213,9 @@ function App() {
           {activeModal === 'commandPalette' && <CommandPalette />}
           <AnimatePresence>
             {activeModal === 'globalSearch' && <GlobalSearchModal />}
+          </AnimatePresence>
+          <AnimatePresence>
+            {isCostDashboardOpen && <CostDashboard />}
           </AnimatePresence>
         </>
       )}
