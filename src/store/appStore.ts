@@ -98,6 +98,13 @@ interface AppState {
   // Whether the first-launch "update source" hint toast has already been shown.
   seenUpdateSourceToast: boolean;
 
+  // Global hotkey — summons the window from anywhere on the system.
+  // Empty string disables the hotkey. Stored as a Tauri shortcut string
+  // (e.g. "Meta+Backquote", "CommandOrControl+Shift+T").
+  globalHotkey: string;
+  // Auto-hide the window when it loses focus (only active when a hotkey is set).
+  autoHideOnBlur: boolean;
+
   toggleSidebar: () => void;
   toggleSidebarCollapse: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -160,6 +167,10 @@ interface AppState {
   // macOS update source actions
   setMacUpdateSource: (source: 'homebrew' | 'in-app') => void;
   setSeenUpdateSourceToast: (seen: boolean) => void;
+
+  // Global hotkey actions
+  setGlobalHotkey: (hotkey: string) => void;
+  setAutoHideOnBlur: (enabled: boolean) => void;
 }
 
 interface SavedTerminalConfig {
@@ -256,6 +267,10 @@ export const useAppStore = create<AppState>()(
       // macOS update source — defaults to Homebrew (cleanest UX, no quarantine
       // re-prompts). User can switch to in-app updater from Settings.
       macUpdateSource: 'homebrew' as const,
+
+      // Global hotkey — default Cmd+` (Meta+Backquote) on macOS.
+      globalHotkey: 'Meta+Backquote',
+      autoHideOnBlur: false,
 
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       toggleSidebarCollapse: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
@@ -525,6 +540,10 @@ export const useAppStore = create<AppState>()(
       setMacUpdateSource: (source) => set({ macUpdateSource: source }),
       seenUpdateSourceToast: false,
       setSeenUpdateSourceToast: (seen) => set({ seenUpdateSourceToast: seen }),
+
+      // Global hotkey
+      setGlobalHotkey: (hotkey) => set({ globalHotkey: hotkey }),
+      setAutoHideOnBlur: (enabled) => set({ autoHideOnBlur: enabled }),
     }),
     {
       name: 'claude-terminal-app',
@@ -547,6 +566,8 @@ export const useAppStore = create<AppState>()(
         lastSeenVersion: state.lastSeenVersion,
         macUpdateSource: state.macUpdateSource,
         seenUpdateSourceToast: state.seenUpdateSourceToast,
+        globalHotkey: state.globalHotkey,
+        autoHideOnBlur: state.autoHideOnBlur,
       }),
     }
   )

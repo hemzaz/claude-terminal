@@ -278,6 +278,20 @@ pub async fn check_quarantine() -> Result<bool, String> {
     }
 }
 
+#[command]
+pub async fn set_global_hotkey(app: tauri::AppHandle, shortcut: String) -> Result<(), String> {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+    app.global_shortcut()
+        .unregister_all()
+        .map_err(|e| e.to_string())?;
+    if !shortcut.is_empty() {
+        app.global_shortcut()
+            .register(shortcut.as_str())
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// Removes the `com.apple.quarantine` xattr from the running `.app` bundle.
 /// No-op on non-macOS platforms.
 #[command]
