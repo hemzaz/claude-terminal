@@ -33,6 +33,7 @@ import { useNotification } from './hooks/useNotification';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
   constructor(props: { children: ReactNode }) {
@@ -93,7 +94,7 @@ interface SavedTerminalConfig {
 }
 
 function App() {
-  const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, orchestrationOpen, activeModal, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openModal, seenUpdateSourceToast, setSeenUpdateSourceToast } = useAppStore();
+  const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, orchestrationOpen, activeModal, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openModal, seenUpdateSourceToast, setSeenUpdateSourceToast, globalHotkey, autoHideOnBlur } = useAppStore();
   const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal } = useTerminalStore();
   const [showSetup, setShowSetup] = useState<boolean | null>(null);
   const { notify } = useNotification();
@@ -155,6 +156,26 @@ function App() {
     const enabled = useAppStore.getState().errorReportingEnabled;
     invoke('set_error_reporting_enabled', { enabled }).catch(() => {});
   }, []);
+
+  // Register the global hotkey whenever the stored value changes.
+  // An empty string disables it (Rust side unregisters all before re-registering).
+  useEffect(() => {
+    invoke('set_global_hotkey', { shortcut: globalHotkey }).catch(() => {});
+  }, [globalHotkey]);
+
+  // Auto-hide on blur: when the window loses focus, hide it so the hotkey can
+  // summon it again. Only active when a hotkey is configured.
+  useEffect(() => {
+    if (!autoHideOnBlur || !globalHotkey) return;
+    const appWindow = getCurrentWindow();
+    let unlisten: (() => void) | undefined;
+    appWindow
+      .onFocusChanged(({ payload: focused }) => {
+        if (!focused) appWindow.hide().catch(() => {});
+      })
+      .then((fn) => { unlisten = fn; });
+    return () => { unlisten?.(); };
+  }, [autoHideOnBlur, globalHotkey]);
 
   // Telemetry heartbeat — fire on startup then every 5 minutes
   useEffect(() => {

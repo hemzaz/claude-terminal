@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { X, Download, RefreshCw, CheckCircle, AlertCircle, ExternalLink, Check, Rocket, Bell } from 'lucide-react';
+import { X, Download, RefreshCw, CheckCircle, AlertCircle, ExternalLink, Check, Rocket, Bell, Keyboard } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
 import { useAppStore } from '../store/appStore';
@@ -17,7 +17,7 @@ interface UpdateCheckResult {
 }
 
 export function SettingsModal() {
-  const { closeModal, defaultClaudeArgs, setDefaultClaudeArgs, notifyOnFinish, setNotifyOnFinish, restoreSession, setRestoreSession, telemetryEnabled, setTelemetryEnabled, errorReportingEnabled, setErrorReportingEnabled, showGitPanel, setShowGitPanel, showFileTree, setShowFileTree, macUpdateSource, setMacUpdateSource } = useAppStore();
+  const { closeModal, defaultClaudeArgs, setDefaultClaudeArgs, notifyOnFinish, setNotifyOnFinish, restoreSession, setRestoreSession, telemetryEnabled, setTelemetryEnabled, errorReportingEnabled, setErrorReportingEnabled, showGitPanel, setShowGitPanel, showFileTree, setShowFileTree, macUpdateSource, setMacUpdateSource, globalHotkey, setGlobalHotkey, autoHideOnBlur, setAutoHideOnBlur } = useAppStore();
   const homebrewManaged = isMac && macUpdateSource === 'homebrew';
   const [claudeVersion, setClaudeVersion] = useState<string>('');
   const [latestVersion, setLatestVersion] = useState<string>('');
@@ -28,6 +28,40 @@ export function SettingsModal() {
   const [updateMessage, setUpdateMessage] = useState<string>('');
   const [argsText, setArgsText] = useState(defaultClaudeArgs.join('\n'));
   const [isTestingNotification, setIsTestingNotification] = useState(false);
+
+  const [isRecording, setIsRecording] = useState(false);
+
+  const formatShortcut = (s: string): string =>
+    s
+      .split('+')
+      .map((part) => {
+        switch (part) {
+          case 'Meta':       return isMac ? '⌘' : 'Win';
+          case 'Control':    return isMac ? '⌃' : 'Ctrl';
+          case 'Alt':        return isMac ? '⌥' : 'Alt';
+          case 'Shift':      return '⇧';
+          case 'Backquote':  return '`';
+          case 'Space':      return 'Space';
+          default:           return part.startsWith('Key') ? part.slice(3) : part;
+        }
+      })
+      .join(' + ');
+
+  const handleRecordKeyDown = (e: React.KeyboardEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (['Control', 'Alt', 'Shift', 'Meta', 'OS', 'Super'].includes(e.key)) return;
+    const parts: string[] = [];
+    if (e.metaKey)  parts.push('Meta');
+    if (e.ctrlKey)  parts.push('Control');
+    if (e.altKey)   parts.push('Alt');
+    if (e.shiftKey) parts.push('Shift');
+    parts.push(e.code);
+    const shortcut = parts.join('+');
+    setGlobalHotkey(shortcut);
+    invoke('set_global_hotkey', { shortcut }).catch(() => {});
+    setIsRecording(false);
+  };
 
   const sendTestNotification = async () => {
     setIsTestingNotification(true);
@@ -567,6 +601,72 @@ export function SettingsModal() {
                   <span
                     className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
                       errorReportingEnabled ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Global Hotkey */}
+          <div>
+            <h3 className="text-text-primary text-[13px] font-medium mb-2">Global Hotkey</h3>
+            <div className="bg-bg-primary rounded-md ring-1 ring-border p-3 space-y-3">
+              <p className="text-text-tertiary text-[11px]">
+                Press this key combo from anywhere to show or hide the window.
+              </p>
+              <div className="flex items-center gap-2">
+                {isRecording ? (
+                  <div
+                    tabIndex={0}
+                    // eslint-disable-next-line jsx-a11y/no-autofocus
+                    autoFocus
+                    onKeyDown={handleRecordKeyDown}
+                    onBlur={() => setIsRecording(false)}
+                    className="flex-1 h-9 px-3 rounded-md ring-2 ring-accent-primary bg-bg-elevated text-text-primary text-[13px] flex items-center outline-none cursor-default"
+                  >
+                    <span className="text-text-tertiary text-[12px] animate-pulse">Press a key combo…</span>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setIsRecording(true)}
+                    className="flex-1 h-9 px-3 rounded-md ring-1 ring-border-light bg-bg-elevated hover:bg-white/[0.04] text-text-primary text-[13px] flex items-center justify-between transition-colors"
+                  >
+                    <span className="font-mono text-[12px]">
+                      {globalHotkey ? formatShortcut(globalHotkey) : 'Click to record…'}
+                    </span>
+                    <Keyboard size={13} className="text-text-tertiary flex-shrink-0" />
+                  </button>
+                )}
+                {globalHotkey && (
+                  <button
+                    onClick={() => {
+                      setGlobalHotkey('');
+                      invoke('set_global_hotkey', { shortcut: '' }).catch(() => {});
+                    }}
+                    className="h-9 px-3 rounded-md ring-1 ring-border-light bg-bg-elevated hover:bg-white/[0.04] text-text-secondary hover:text-text-primary text-[12px] transition-colors"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-text-primary text-[13px]">Auto-hide on blur</p>
+                  <p className="text-text-tertiary text-[11px] mt-0.5">
+                    Hide the window whenever it loses focus
+                  </p>
+                </div>
+                <button
+                  onClick={() => setAutoHideOnBlur(!autoHideOnBlur)}
+                  disabled={!globalHotkey}
+                  className={`relative w-10 h-5 rounded-full transition-colors disabled:opacity-40 ${
+                    autoHideOnBlur && globalHotkey ? 'bg-accent-primary' : 'bg-border-light'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                      autoHideOnBlur && globalHotkey ? 'translate-x-5' : 'translate-x-0'
                     }`}
                   />
                 </button>
