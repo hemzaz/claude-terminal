@@ -112,7 +112,10 @@ export interface SettingsSlice {
   autoHideOnBlur: boolean;
   // Keybinding overrides (loaded from disk at boot; NOT persisted to localStorage)
   keybindingOverrides: Record<string, string>;
+  // Whether the first-run onboarding tour has been completed.
+  onboardingCompleted: boolean;
 
+  setOnboardingCompleted: (value: boolean) => void;
   setDefaultClaudeArgs: (args: string[]) => void;
   setNotifyOnFinish: (enabled: boolean) => void;
   setRestoreSession: (enabled: boolean) => void;

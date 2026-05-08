@@ -17,7 +17,9 @@ export const createSettingsSlice: StateCreator<AppState, [], [], SettingsSlice> 
   autoHideOnBlur: false,
   // Keybinding overrides — populated at boot via loadKeybindings(); not persisted.
   keybindingOverrides: {},
+  onboardingCompleted: false,
 
+  setOnboardingCompleted: (value) => set({ onboardingCompleted: value }),
   setDefaultClaudeArgs: (args) => set({ defaultClaudeArgs: args }),
   setNotifyOnFinish: (enabled) => set({ notifyOnFinish: enabled }),
   setRestoreSession: (enabled) => set({ restoreSession: enabled }),
