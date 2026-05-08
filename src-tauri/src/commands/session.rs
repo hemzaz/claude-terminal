@@ -132,7 +132,6 @@ pub async fn summarize_session(log_path: String) -> Result<Option<String>, Strin
             return Ok(None);
         }
 
-        // Run claude -p to summarize
         let mut cmd = shell_command(
             "claude",
             &[
@@ -393,7 +392,6 @@ pub async fn search_session_history(
                 .unwrap_or(&entry.started_at)
                 .to_string();
 
-            // Match on label
             if entry.label.to_lowercase().contains(&query_lower) {
                 results.push(SessionSearchResult {
                     session_id: entry.id,
@@ -408,7 +406,6 @@ pub async fn search_session_history(
                 }
             }
 
-            // Match inside log file
             if let Some(ref log_path) = entry.log_path {
                 if let Some(ref canonical_logs) = canonical_logs {
                     if let Ok(canonical_path) =

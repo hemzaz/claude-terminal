@@ -237,8 +237,6 @@ impl Database {
         serde_json::from_str(&terminals_json).map_err(|e| e.to_string())
     }
 
-    // Session persistence methods
-
     const LAST_SESSION_KEY: &'static str = "__last_session__";
 
     pub fn save_last_session(&self, terminals: &[TerminalConfig]) -> Result<(), String> {
@@ -264,8 +262,6 @@ impl Database {
             .map_err(|e| e.to_string())?;
         Ok(())
     }
-
-    // Session history methods
 
     pub fn insert_session_history(&self, terminal_id: &str, label: &str, started_at: &str, log_path: Option<&str>) -> Result<i64, String> {
         self.conn.execute(
@@ -321,8 +317,6 @@ impl Database {
         Ok(())
     }
 
-    // Snippet methods
-
     pub fn save_snippet(&self, snippet: &Snippet) -> Result<(), String> {
         if snippet.title.is_empty() || snippet.title.len() > 255 {
             return Err("Snippet title must be 1-255 characters".to_string());
@@ -358,8 +352,6 @@ impl Database {
         Ok(())
     }
 
-    // Session summary methods
-
     pub fn save_session_summary(&self, terminal_id: &str, summary: &str) -> Result<(), String> {
         self.conn.execute(
             "INSERT OR REPLACE INTO session_summaries (terminal_id, summary, created_at) VALUES (?1, ?2, ?3)",
@@ -380,8 +372,6 @@ impl Database {
             Err(e) => Err(e.to_string()),
         }
     }
-
-    // Layout template methods
 
     pub fn save_layout_template(&self, id: &str, name: &str, layout: &str, terminal_configs: &str) -> Result<(), String> {
         if name.is_empty() || name.len() > 255 {
@@ -431,8 +421,6 @@ impl Database {
             .map_err(|e| e.to_string())?;
         Ok(())
     }
-
-    // App meta methods
 
     pub fn get_or_create_installation_id(&self) -> Result<String, String> {
         let result: Result<String, _> = self.conn.query_row(
