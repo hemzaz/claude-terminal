@@ -4,12 +4,15 @@ use std::future::Future;
 use std::path::PathBuf;
 use tauri::State;
 
-/// Run a Tauri command future and report any `Err(String)` it returns to the
-/// error_reporter (fire-and-forget). The command's return value is unchanged.
+/// Wrap a Tauri command body so any `Err(String)` it returns is also reported
+/// to the error_reporter (fire-and-forget). The command's behavior is unchanged.
 ///
-/// Previously named `wrap_cmd`; the old name is re-exported below for
-/// backwards-compat while callers are migrated.
-pub async fn with_error_reporting<T, F>(name: &'static str, fut: F) -> Result<T, String>
+/// # Rename note (Issue #72)
+/// This function should be renamed to `with_error_reporting` — the current name
+/// reveals nothing about the error-reporting behaviour. Deferred until the sibling
+/// command modules (git, session, terminal, …) can be updated in the same PR so
+/// the rename is atomic.
+pub async fn wrap_cmd<T, F>(name: &'static str, fut: F) -> Result<T, String>
 where
     F: Future<Output = Result<T, String>>,
 {
@@ -183,20 +186,6 @@ pub fn canonical_in_logs(path: &str) -> Result<PathBuf, String> {
         ));
     }
     Ok(canonical_path)
-}
-
-/// Backwards-compat alias for [`with_error_reporting`].
-///
-/// # Deprecated
-/// Use `with_error_reporting` directly. This alias will be removed once all
-/// call sites in the sibling command modules have been updated.
-#[deprecated(since = "1.21.0", note = "use `with_error_reporting` instead")]
-#[allow(dead_code)]
-pub async fn wrap_cmd<T, F>(name: &'static str, fut: F) -> Result<T, String>
-where
-    F: Future<Output = Result<T, String>>,
-{
-    with_error_reporting(name, fut).await
 }
 
 #[cfg(test)]
