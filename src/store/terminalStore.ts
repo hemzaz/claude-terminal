@@ -478,7 +478,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     // shows the most recently-requested script.
     const existingChildId = get().scriptChildren.get(parentId);
     if (existingChildId) {
-      await get().closeScript(parentId).catch(() => {});
+      await get().closeScript(parentId).catch(() => { /* non-fatal: no existing script child to close */ });
     }
 
     const cwd = cwdOverride ?? parent.config.working_directory;
