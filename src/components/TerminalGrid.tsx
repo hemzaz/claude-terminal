@@ -1,10 +1,45 @@
 import { useEffect, useRef, useState, memo, useCallback, useMemo } from 'react';
 import { AnimatePresence } from 'framer-motion';
-import { X, Maximize2, Minimize2, Plus, Grid3X3, LayoutGrid, Columns, Rows, Square, Layers } from 'lucide-react';
+import {
+  X,
+  Maximize2,
+  Minimize2,
+  Plus,
+  Grid3X3,
+  LayoutGrid,
+  Columns,
+  Rows,
+  Square,
+  Layers,
+  Bookmark,
+  BookmarkPlus,
+  Trash2,
+  Check,
+} from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore, GridLayout } from '../store/appStore';
 import { TerminalView } from './TerminalView';
 import { setDragData, getDragData, isTerminalDrag } from '../utils/dragDrop';
+
+// ─── Layout template types ────────────────────────────────────────────────────
+
+interface SavedTerminalSlot {
+  label: string;
+  working_directory: string;
+  claude_args: string[];
+  env_vars: Record<string, string>;
+  color_tag: string | null;
+  nickname: string | null;
+}
+
+interface LayoutTemplate {
+  id: string;
+  name: string;
+  layout: string;
+  terminal_configs: string; // JSON of SavedTerminalSlot[]
+  created_at: string;
+}
 
 // Grid layout configurations
 const GRID_CONFIGS: Record<GridLayout, { cols: number; rows: number }> = {
@@ -259,6 +294,202 @@ function AddTerminalCell() {
   );
 }
 
+// ─── Layout Templates Menu ────────────────────────────────────────────────────
+
+interface LayoutTemplatesMenuProps {
+  gridTerminalIds: string[];
+  gridLayout: GridLayout;
+}
+
+function LayoutTemplatesMenu({ gridTerminalIds, gridLayout }: LayoutTemplatesMenuProps) {
+  const { terminals, createTerminal } = useTerminalStore();
+  const { setGridLayout, setGridTerminals, setGridMode } = useAppStore();
+  const [open, setOpen] = useState(false);
+  const [templates, setTemplates] = useState<LayoutTemplate[]>([]);
+  const [saveName, setSaveName] = useState('');
+  const [showSaveInput, setShowSaveInput] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
+
+  const loadTemplates = useCallback(async () => {
+    try {
+      const list = await invoke<LayoutTemplate[]>('list_layout_templates');
+      setTemplates(list);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open) loadTemplates();
+  }, [open, loadTemplates]);
+
+  const handleSave = useCallback(async () => {
+    const name = saveName.trim();
+    if (!name) return;
+    setSaving(true);
+    try {
+      const slots: SavedTerminalSlot[] = gridTerminalIds
+        .map((id) => terminals.get(id)?.config)
+        .filter((c): c is NonNullable<typeof c> => c != null)
+        .map((c) => ({
+          label: c.label,
+          working_directory: c.working_directory,
+          claude_args: c.claude_args,
+          env_vars: c.env_vars,
+          color_tag: c.color_tag ?? null,
+          nickname: c.nickname ?? null,
+        }));
+      await invoke('save_layout_template', {
+        id: crypto.randomUUID(),
+        name,
+        layout: gridLayout,
+        terminalConfigs: JSON.stringify(slots),
+      });
+      setSaveName('');
+      setShowSaveInput(false);
+      await loadTemplates();
+    } catch {
+      // ignore
+    } finally {
+      setSaving(false);
+    }
+  }, [saveName, gridTerminalIds, gridLayout, terminals, loadTemplates]);
+
+  const handleLoad = useCallback(
+    async (template: LayoutTemplate) => {
+      setLoadingId(template.id);
+      try {
+        const slots: SavedTerminalSlot[] = JSON.parse(template.terminal_configs);
+        const newIds: string[] = [];
+        for (const slot of slots) {
+          const id = await createTerminal(
+            slot.label,
+            slot.working_directory,
+            slot.claude_args,
+            slot.env_vars,
+            slot.color_tag ?? undefined,
+            slot.nickname ?? undefined,
+          );
+          newIds.push(id);
+        }
+        setGridLayout(template.layout as GridLayout);
+        setGridTerminals(newIds);
+        setGridMode(true);
+        setOpen(false);
+      } catch {
+        // ignore
+      } finally {
+        setLoadingId(null);
+      }
+    },
+    [createTerminal, setGridLayout, setGridTerminals, setGridMode],
+  );
+
+  const handleDelete = useCallback(
+    async (id: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      try {
+        await invoke('delete_layout_template', { id });
+        await loadTemplates();
+      } catch {
+        // ignore
+      }
+    },
+    [loadTemplates],
+  );
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className={`flex items-center gap-1 px-2 py-1 text-[11px] rounded transition-colors ${
+          open
+            ? 'bg-accent-primary/10 text-accent-primary'
+            : 'text-text-secondary hover:text-text-primary hover:bg-white/[0.04]'
+        }`}
+        title="Layout templates"
+      >
+        <Bookmark size={12} />
+        Templates
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full mt-1 z-50 bg-bg-elevated ring-1 ring-white/[0.08] rounded-lg shadow-xl p-2 min-w-[220px]">
+            <p className="text-text-tertiary text-[11px] px-2 py-1 mb-1">Saved Layouts</p>
+
+            {templates.length > 0 ? (
+              <div className="max-h-48 overflow-y-auto space-y-0.5 mb-2">
+                {templates.map((t) => (
+                  <div
+                    key={t.id}
+                    className="flex items-center gap-1 w-full px-2 py-1.5 rounded hover:bg-white/[0.06] cursor-pointer group"
+                    onClick={() => handleLoad(t)}
+                  >
+                    {loadingId === t.id ? (
+                      <Check size={12} className="text-accent-primary shrink-0" />
+                    ) : (
+                      <Bookmark size={12} className="text-text-tertiary shrink-0" />
+                    )}
+                    <span className="flex-1 text-text-primary text-[12px] truncate">{t.name}</span>
+                    <span className="text-text-tertiary text-[10px] shrink-0">{t.layout}</span>
+                    <button
+                      onClick={(e) => handleDelete(t.id, e)}
+                      className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/10 text-text-tertiary hover:text-red-400 transition-colors"
+                      title="Delete template"
+                    >
+                      <Trash2 size={10} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-text-tertiary text-[11px] px-2 py-2 mb-2">No saved templates</p>
+            )}
+
+            <div className="border-t border-border pt-2">
+              {showSaveInput ? (
+                <div className="flex items-center gap-1 px-1">
+                  <input
+                    autoFocus
+                    type="text"
+                    value={saveName}
+                    onChange={(e) => setSaveName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSave();
+                      if (e.key === 'Escape') setShowSaveInput(false);
+                    }}
+                    placeholder="Template name…"
+                    className="flex-1 bg-bg-primary text-text-primary text-[11px] px-2 py-1 rounded border border-border focus:border-accent-primary outline-none"
+                  />
+                  <button
+                    onClick={handleSave}
+                    disabled={saving || !saveName.trim()}
+                    className="p-1 rounded bg-accent-primary/10 text-accent-primary hover:bg-accent-primary/20 disabled:opacity-40 transition-colors"
+                  >
+                    <Check size={12} />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowSaveInput(true)}
+                  disabled={gridTerminalIds.length === 0}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent-primary/10 text-accent-primary text-[12px] disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <BookmarkPlus size={14} />
+                  Save current layout…
+                </button>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function TerminalGrid() {
   const {
     gridTerminalIds,
@@ -371,6 +602,9 @@ export function TerminalGrid() {
             <Layers size={12} />
             Add All
           </button>
+
+          {/* Layout Templates */}
+          <LayoutTemplatesMenu gridTerminalIds={gridTerminalIds} gridLayout={gridLayout} />
 
           {/* Exit Grid Mode */}
           <button
