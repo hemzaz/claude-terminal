@@ -25,6 +25,7 @@ import {
   GitBranch,
   SplitSquareHorizontal,
   X,
+  RotateCcw,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -102,7 +103,7 @@ function fuzzyMatch(text: string, query: string): { matches: boolean; score: num
 
 export function CommandPalette() {
   const { closeModal, replaceModal, openFiles } = useAppStore();
-  const { terminals, activeTerminalId, setActiveTerminal, writeToTerminal } = useTerminalStore();
+  const { terminals, activeTerminalId, setActiveTerminal, writeToTerminal, closedTerminalHistory } = useTerminalStore();
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [hints, setHints] = useState<HintCategory[]>([]);
@@ -149,6 +150,31 @@ export function CommandPalette() {
           action: () => { setActiveTerminal(config.id); closeModal(); },
         });
       });
+    }
+
+    // Closed (recently-closed) terminals — within 5 minutes
+    if (prefixMode === 'all' || prefixMode === 'terminals') {
+      const now = Date.now();
+      const FIVE_MIN = 5 * 60 * 1000;
+      closedTerminalHistory
+        .filter(r => now - r.closedAt < FIVE_MIN)
+        .forEach((record, i) => {
+          const { label, working_directory, claude_args, env_vars, color_tag, nickname } = record.config;
+          result.push({
+            id: `closed-terminal-${i}`,
+            label: `Reopen: ${nickname || label}`,
+            description: working_directory,
+            category: 'Closed Terminals',
+            icon: RotateCcw,
+            action: () => {
+              useTerminalStore.getState().createTerminal(
+                label, working_directory, claude_args, env_vars,
+                color_tag ?? undefined, nickname ?? undefined,
+              );
+              closeModal();
+            },
+          });
+        });
     }
 
     // Actions
@@ -299,7 +325,7 @@ export function CommandPalette() {
     }
 
     return result;
-  }, [terminals, hints, snippets, profiles, sessions, openFiles, activeTerminalId, closeModal, replaceModal, setActiveTerminal, writeToTerminal, prefixMode]);
+  }, [terminals, closedTerminalHistory, hints, snippets, profiles, sessions, openFiles, activeTerminalId, closeModal, replaceModal, setActiveTerminal, writeToTerminal, prefixMode]);
 
   const filtered = useMemo(() => {
     if (!effectiveQuery) return items;

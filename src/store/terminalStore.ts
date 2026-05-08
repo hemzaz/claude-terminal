@@ -22,6 +22,11 @@ export interface LoopInfo {
   prompt: string;
 }
 
+export interface ClosedTerminalRecord {
+  config: TerminalConfig;
+  closedAt: number; // milliseconds timestamp (Date.now())
+}
+
 interface TerminalInstance {
   config: TerminalConfig;
   xterm: Terminal | null;
@@ -52,6 +57,9 @@ interface TerminalState {
   // Bottom pane (interactive shells the user opens from the Repositories list).
   bottomTerminalIds: string[];
   activeBottomTerminalId: string | null;
+
+  closedTerminalHistory: ClosedTerminalRecord[];
+  reopenTerminal: () => Promise<string | null>;
 
   createTerminal: (
     label: string,
@@ -137,6 +145,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   scriptChildren: new Map(),
   bottomTerminalIds: [],
   activeBottomTerminalId: null,
+  closedTerminalHistory: [],
 
   createTerminal: async (label, workingDirectory, claudeArgs, envVars, colorTag, nickname, restoredOutput) => {
     try {
@@ -222,6 +231,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       const remainingIds = Array.from(newTerminals.values())
         .filter((t) => !t.scriptParentId && !t.isShellTerminal)
         .map((t) => t.config.id);
+      const isMainTerminal = instance && !instance.scriptParentId && !instance.isShellTerminal;
       return {
         terminals: newTerminals,
         unreadTerminalIds: newUnread,
@@ -230,8 +240,22 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
         activeTerminalId: state.activeTerminalId === id
           ? (remainingIds[0] || null)
           : state.activeTerminalId,
+        closedTerminalHistory: isMainTerminal
+          ? [{ config: instance.config, closedAt: Date.now() }, ...state.closedTerminalHistory].slice(0, 10)
+          : state.closedTerminalHistory,
       };
     });
+  },
+
+  reopenTerminal: async () => {
+    const now = Date.now();
+    const FIVE_MIN = 5 * 60 * 1000;
+    const history = get().closedTerminalHistory.filter(r => now - r.closedAt < FIVE_MIN);
+    if (history.length === 0) return null;
+    const [first, ...rest] = history;
+    set({ closedTerminalHistory: rest });
+    const { label, working_directory, claude_args, env_vars, color_tag, nickname } = first.config;
+    return get().createTerminal(label, working_directory, claude_args, env_vars, color_tag ?? undefined, nickname ?? undefined);
   },
 
   setActiveTerminal: (id) => set((state) => {
