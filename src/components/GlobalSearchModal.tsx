@@ -1,113 +1,25 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { invoke } from '@tauri-apps/api/core';
 import {
   Search as SearchIcon,
   X,
   Loader2,
-  ChevronDown,
-  ChevronRight,
   CaseSensitive,
   FileCode2,
-  AlertCircle,
   Clock,
   Scissors,
 } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
+import { FilesSearchTab, FileSearchResult, SearchSummary } from './search/FilesSearchTab';
+import { SessionsSearchTab } from './search/SessionsSearchTab';
+import { SnippetsSearchTab } from './search/SnippetsSearchTab';
 
-// ── types ─────────────────────────────────────────────────────────────────────
-
-interface SearchMatch {
-  line: number;
-  column: number;
-  line_text: string;
-  match_length: number;
-}
-
-interface FileSearchResult {
-  file_path: string;
-  relative_path: string;
-  matches: SearchMatch[];
-  name_match: boolean;
-}
-
-interface SearchSummary {
-  results: FileSearchResult[];
-  total_matches: number;
-  total_files: number;
-  truncated: boolean;
-}
-
-interface SessionSearchResult {
-  session_id: number;
-  terminal_id: string;
-  label: string;
-  snippet: string;
-  line_no: number;
-  timestamp: string;
-}
-
-interface Snippet {
-  id: string;
-  title: string;
-  content: string;
-  category: string;
-  created_at: string;
-}
+// ── Types ──────────────────────────────────────────────────────────────────────
 
 type Tab = 'files' | 'sessions' | 'snippets';
 
-// ── helpers ───────────────────────────────────────────────────────────────────
-
-function HighlightedLine({
-  text,
-  column,
-  matchLength,
-}: {
-  text: string;
-  column: number;
-  matchLength: number;
-}) {
-  const start = Math.max(0, column - 1);
-  const end = Math.min(text.length, start + matchLength);
-  if (end <= start) return <span>{text}</span>;
-  const previewStart = Math.max(0, start - 80);
-  const before =
-    previewStart > 0 ? '…' + text.slice(previewStart, start) : text.slice(0, start);
-  const matched = text.slice(start, end);
-  const after = text.slice(end);
-  return (
-    <>
-      <span className="text-text-tertiary">{before}</span>
-      <span className="bg-accent-primary/30 text-text-primary rounded-[2px] px-[1px]">{matched}</span>
-      <span className="text-text-tertiary">{after}</span>
-    </>
-  );
-}
-
-/** Highlight all occurrences of `query` inside `text` (case-insensitive). */
-function HighlightedText({ text, query }: { text: string; query: string }) {
-  if (!query) return <span>{text}</span>;
-  const lc = text.toLowerCase();
-  const ql = query.toLowerCase();
-  const parts: React.ReactNode[] = [];
-  let cursor = 0;
-  let idx: number;
-  while ((idx = lc.indexOf(ql, cursor)) !== -1) {
-    if (idx > cursor) parts.push(<span key={cursor}>{text.slice(cursor, idx)}</span>);
-    parts.push(
-      <span key={idx} className="bg-accent-primary/30 text-text-primary rounded-[2px] px-[1px]">
-        {text.slice(idx, idx + ql.length)}
-      </span>,
-    );
-    cursor = idx + ql.length;
-  }
-  if (cursor < text.length) parts.push(<span key={cursor}>{text.slice(cursor)}</span>);
-  return <>{parts}</>;
-}
-
-// ── main component ─────────────────────────────────────────────────────────────
+// ── Component ──────────────────────────────────────────────────────────────────
 
 export function GlobalSearchModal() {
   const closeModal = useAppStore((s) => s.closeModal);
@@ -123,26 +35,21 @@ export function GlobalSearchModal() {
   const [query, setQuery] = useState('');
   const [caseSensitive, setCaseSensitive] = useState(false);
 
-  // ── Files tab state ──────────────────────────────────────────────────────
+  // ── Per-tab state lifted from children (status line + keyboard nav) ────────
   const [fileSearching, setFileSearching] = useState(false);
   const [fileSummary, setFileSummary] = useState<SearchSummary | null>(null);
-  const [fileError, setFileError] = useState<string | null>(null);
   const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
   const [fileSelected, setFileSelected] = useState<{ fileIdx: number; matchIdx: number }>({
     fileIdx: 0,
     matchIdx: 0,
   });
-  const fileSearchToken = useRef(0);
 
-  // ── Sessions tab state ───────────────────────────────────────────────────
   const [sessionSearching, setSessionSearching] = useState(false);
-  const [sessionResults, setSessionResults] = useState<SessionSearchResult[]>([]);
-  const [sessionError, setSessionError] = useState<string | null>(null);
+  const [sessionResultCount, setSessionResultCount] = useState(0);
   const [sessionSelected, setSessionSelected] = useState(0);
-  const sessionSearchToken = useRef(0);
 
-  // ── Snippets tab state ───────────────────────────────────────────────────
-  const [allSnippets, setAllSnippets] = useState<Snippet[]>([]);
+  const [snippetTotal, setSnippetTotal] = useState(0);
+  const [snippetFiltered, setSnippetFiltered] = useState(0);
   const [snippetSelected, setSnippetSelected] = useState(0);
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -153,117 +60,15 @@ export function GlobalSearchModal() {
     inputRef.current?.select();
   }, []);
 
-  // Focus input when switching tabs
+  useEffect(() => { inputRef.current?.focus(); }, [tab]);
+
   useEffect(() => {
-    inputRef.current?.focus();
-  }, [tab]);
+    setFileSelected({ fileIdx: 0, matchIdx: 0 });
+    setSessionSelected(0);
+    setSnippetSelected(0);
+  }, [query]);
 
-  // ── Files search (debounced) ─────────────────────────────────────────────
-  useEffect(() => {
-    if (tab !== 'files') return;
-    if (!searchRoot) return;
-    const trimmed = query.trim();
-    if (!trimmed) {
-      setFileSummary(null);
-      setFileError(null);
-      setFileSearching(false);
-      return;
-    }
-    setFileSearching(true);
-    const myToken = ++fileSearchToken.current;
-    const handle = setTimeout(async () => {
-      try {
-        const res = await invoke<SearchSummary>('search_in_files', {
-          path: searchRoot,
-          query: trimmed,
-          caseSensitive,
-          includeFileContents: true,
-        });
-        if (myToken !== fileSearchToken.current) return;
-        setFileSummary(res);
-        setFileError(null);
-        setCollapsedFiles(new Set());
-        setFileSelected({ fileIdx: 0, matchIdx: 0 });
-      } catch (err) {
-        if (myToken !== fileSearchToken.current) return;
-        setFileError(typeof err === 'string' ? err : 'Search failed');
-        setFileSummary(null);
-      } finally {
-        if (myToken === fileSearchToken.current) setFileSearching(false);
-      }
-    }, 250);
-    return () => clearTimeout(handle);
-  }, [query, caseSensitive, searchRoot, tab]);
-
-  // ── Sessions search (debounced) ──────────────────────────────────────────
-  useEffect(() => {
-    if (tab !== 'sessions') return;
-    const trimmed = query.trim();
-    if (!trimmed) {
-      setSessionResults([]);
-      setSessionError(null);
-      setSessionSearching(false);
-      return;
-    }
-    setSessionSearching(true);
-    const myToken = ++sessionSearchToken.current;
-    const handle = setTimeout(async () => {
-      try {
-        const res = await invoke<SessionSearchResult[]>('search_session_history', {
-          query: trimmed,
-        });
-        if (myToken !== sessionSearchToken.current) return;
-        setSessionResults(res);
-        setSessionError(null);
-        setSessionSelected(0);
-      } catch (err) {
-        if (myToken !== sessionSearchToken.current) return;
-        setSessionError(typeof err === 'string' ? err : 'Search failed');
-        setSessionResults([]);
-      } finally {
-        if (myToken === sessionSearchToken.current) setSessionSearching(false);
-      }
-    }, 250);
-    return () => clearTimeout(handle);
-  }, [query, tab]);
-
-  // ── Load snippets once on mount ──────────────────────────────────────────
-  useEffect(() => {
-    invoke<Snippet[]>('get_snippets')
-      .then(setAllSnippets)
-      .catch(() => {/* non-fatal */});
-  }, []);
-
-  const filteredSnippets = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return allSnippets;
-    return allSnippets.filter(
-      (s) =>
-        s.title.toLowerCase().includes(q) ||
-        s.content.toLowerCase().includes(q) ||
-        s.category.toLowerCase().includes(q),
-    );
-  }, [query, allSnippets]);
-
-  // ── Files: flat navigation ───────────────────────────────────────────────
-  const fileResults = fileSummary?.results ?? [];
-  const flatFileNav = useMemo(() => {
-    const out: { fileIdx: number; matchIdx: number }[] = [];
-    fileResults.forEach((file, fileIdx) => {
-      if (collapsedFiles.has(file.file_path)) return;
-      file.matches.forEach((_, matchIdx) => out.push({ fileIdx, matchIdx }));
-      if (file.matches.length === 0) out.push({ fileIdx, matchIdx: -1 });
-    });
-    return out;
-  }, [fileResults, collapsedFiles]);
-
-  const flatFileIndex = useMemo(
-    () =>
-      flatFileNav.findIndex(
-        (e) => e.fileIdx === fileSelected.fileIdx && e.matchIdx === fileSelected.matchIdx,
-      ),
-    [flatFileNav, fileSelected],
-  );
+  useEffect(() => { setCollapsedFiles(new Set()); }, [fileSummary]);
 
   const openFileMatch = useCallback(
     async (file: FileSearchResult) => {
@@ -277,48 +82,59 @@ export function GlobalSearchModal() {
     [openFileTab, closeModal],
   );
 
-  const toggleFile = (filePath: string) => {
+  const toggleFile = useCallback((filePath: string) => {
     setCollapsedFiles((prev) => {
       const next = new Set(prev);
       if (next.has(filePath)) next.delete(filePath);
       else next.add(filePath);
       return next;
     });
-  };
+  }, []);
 
   // ── Keyboard navigation ──────────────────────────────────────────────────
+  const fileResults = fileSummary?.results ?? [];
+
+  const flatFileNav = (() => {
+    const out: { fileIdx: number; matchIdx: number }[] = [];
+    fileResults.forEach((file, fileIdx) => {
+      if (collapsedFiles.has(file.file_path)) return;
+      file.matches.forEach((_, matchIdx) => out.push({ fileIdx, matchIdx }));
+      if (file.matches.length === 0) out.push({ fileIdx, matchIdx: -1 });
+    });
+    return out;
+  })();
+
+  const flatFileIndex = flatFileNav.findIndex(
+    (e) => e.fileIdx === fileSelected.fileIdx && e.matchIdx === fileSelected.matchIdx,
+  );
+
   const moveFileSelection = (delta: number) => {
     if (flatFileNav.length === 0) return;
     const idx = flatFileIndex < 0 ? 0 : flatFileIndex;
     const next = (idx + delta + flatFileNav.length) % flatFileNav.length;
     setFileSelected(flatFileNav[next]);
     requestAnimationFrame(() => {
-      const el = listRef.current?.querySelector<HTMLElement>(
-        `[data-nav="${flatFileNav[next].fileIdx}-${flatFileNav[next].matchIdx}"]`,
-      );
-      el?.scrollIntoView({ block: 'nearest' });
+      listRef.current
+        ?.querySelector<HTMLElement>(`[data-nav="${flatFileNav[next].fileIdx}-${flatFileNav[next].matchIdx}"]`)
+        ?.scrollIntoView({ block: 'nearest' });
     });
   };
 
   const moveSessionSelection = (delta: number) => {
-    if (sessionResults.length === 0) return;
-    const next = (sessionSelected + delta + sessionResults.length) % sessionResults.length;
+    if (sessionResultCount === 0) return;
+    const next = (sessionSelected + delta + sessionResultCount) % sessionResultCount;
     setSessionSelected(next);
     requestAnimationFrame(() => {
-      const el = listRef.current?.querySelector<HTMLElement>(
-        `[data-session-idx="${next}"]`,
-      );
-      el?.scrollIntoView({ block: 'nearest' });
+      listRef.current
+        ?.querySelector<HTMLElement>(`[data-session-idx="${next}"]`)
+        ?.scrollIntoView({ block: 'nearest' });
     });
   };
 
   const moveSnippetSelection = (delta: number) => {
-    if (filteredSnippets.length === 0) return;
-    setSnippetSelected(
-      (prev) => (prev + delta + filteredSnippets.length) % filteredSnippets.length,
-    );
+    if (snippetFiltered === 0) return;
+    setSnippetSelected((prev) => (prev + delta + snippetFiltered) % snippetFiltered);
   };
-
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
@@ -357,9 +173,7 @@ export function GlobalSearchModal() {
     { id: 'snippets', label: 'Snippets', icon: <Scissors size={11} strokeWidth={1.75} /> },
   ];
 
-  const isSearching =
-    tab === 'files' ? fileSearching : tab === 'sessions' ? sessionSearching : false;
-
+  const isSearching = tab === 'files' ? fileSearching : tab === 'sessions' ? sessionSearching : false;
 
   return (
     <motion.div
@@ -470,7 +284,7 @@ export function GlobalSearchModal() {
               ) : tab === 'sessions' ? (
                 'Searching session history & log files'
               ) : (
-                `${allSnippets.length} snippet${allSnippets.length === 1 ? '' : 's'} loaded`
+                `${snippetTotal} snippet${snippetTotal === 1 ? '' : 's'} loaded`
               )}
             </div>
             <div className="text-text-tertiary flex items-center gap-2">
@@ -483,15 +297,11 @@ export function GlobalSearchModal() {
                   {fileSummary.truncated && ' (truncated)'}
                 </span>
               )}
-              {tab === 'sessions' && !sessionSearching && sessionResults.length > 0 && (
-                <span>
-                  {sessionResults.length} result{sessionResults.length === 1 ? '' : 's'}
-                </span>
+              {tab === 'sessions' && !sessionSearching && sessionResultCount > 0 && (
+                <span>{sessionResultCount} result{sessionResultCount === 1 ? '' : 's'}</span>
               )}
               {tab === 'snippets' && (
-                <span>
-                  {filteredSnippets.length} / {allSnippets.length}
-                </span>
+                <span>{snippetFiltered} / {snippetTotal}</span>
               )}
             </div>
           </div>
@@ -499,199 +309,39 @@ export function GlobalSearchModal() {
 
         {/* Results */}
         <div ref={listRef} className="flex-1 overflow-y-auto py-1.5">
-
-          {/* ── Files tab ──────────────────────────────────────────────── */}
           {tab === 'files' && (
-            <>
-              {fileError && (
-                <div className="flex items-center gap-2 px-4 py-3 text-[12px] text-error">
-                  <AlertCircle size={13} />
-                  {fileError}
-                </div>
-              )}
-              {!fileError && !fileSearching && fileSummary && fileSummary.results.length === 0 && query.trim() && (
-                <div className="px-4 py-6 text-center text-text-tertiary text-[12px]">
-                  No matches found
-                </div>
-              )}
-              {!fileError && !query.trim() && (
-                <div className="px-4 py-6 text-center text-text-tertiary text-[12px]">
-                  Type to search file names and contents across the workspace.
-                </div>
-              )}
-              {!fileError &&
-                fileResults.map((file, fileIdx) => {
-                  const collapsed = collapsedFiles.has(file.file_path);
-                  const isFileRowSelected =
-                    fileSelected.fileIdx === fileIdx && fileSelected.matchIdx === -1;
-                  return (
-                    <div key={file.file_path} className="mb-0.5">
-                      <button
-                        data-nav={`${fileIdx}--1`}
-                        onClick={() => toggleFile(file.file_path)}
-                        onDoubleClick={() => openFileMatch(file)}
-                        className={`w-full flex items-center gap-1.5 px-3 py-1 text-left transition-colors ${
-                          isFileRowSelected ? 'bg-accent-primary/10' : 'hover:bg-white/[0.04]'
-                        }`}
-                      >
-                        {collapsed ? (
-                          <ChevronRight size={11} className="text-text-tertiary flex-shrink-0" strokeWidth={1.75} />
-                        ) : (
-                          <ChevronDown size={11} className="text-text-tertiary flex-shrink-0" strokeWidth={1.75} />
-                        )}
-                        <FileCode2 size={11} className="text-text-tertiary flex-shrink-0" strokeWidth={1.75} />
-                        <span className="text-[12px] text-text-primary font-mono truncate" title={file.relative_path}>
-                          {file.relative_path}
-                        </span>
-                        {file.name_match && (
-                          <span className="text-[9px] uppercase tracking-wider text-accent-primary bg-accent-primary/15 px-1 rounded flex-shrink-0">
-                            name
-                          </span>
-                        )}
-                        <span className="text-text-tertiary text-[10.5px] flex-shrink-0 ml-auto">
-                          {file.matches.length || (file.name_match ? '·' : 0)}
-                        </span>
-                      </button>
-                      {!collapsed && (
-                        <div className="ml-5 border-l border-border">
-                          {file.matches.map((m, matchIdx) => {
-                            const isSel =
-                              fileSelected.fileIdx === fileIdx &&
-                              fileSelected.matchIdx === matchIdx;
-                            return (
-                              <button
-                                key={`${m.line}-${matchIdx}`}
-                                data-nav={`${fileIdx}-${matchIdx}`}
-                                onClick={() => {
-                                  setFileSelected({ fileIdx, matchIdx });
-                                  openFileMatch(file);
-                                }}
-                                onMouseEnter={() => setFileSelected({ fileIdx, matchIdx })}
-                                className={`w-full flex items-baseline gap-2 px-3 py-0.5 text-left transition-colors ${
-                                  isSel ? 'bg-accent-primary/12' : 'hover:bg-white/[0.04]'
-                                }`}
-                              >
-                                <span className="text-text-tertiary text-[10.5px] font-mono flex-shrink-0 w-8 text-right tabular-nums">
-                                  {m.line}
-                                </span>
-                                <span className="text-[12px] font-mono truncate flex-1 min-w-0">
-                                  <HighlightedLine
-                                    text={m.line_text}
-                                    column={m.column}
-                                    matchLength={m.match_length}
-                                  />
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-            </>
+            <FilesSearchTab
+              query={query}
+              caseSensitive={caseSensitive}
+              searchRoot={searchRoot}
+              active={tab === 'files'}
+              selected={fileSelected}
+              collapsedFiles={collapsedFiles}
+              onSelect={setFileSelected}
+              onToggleCollapse={toggleFile}
+              onOpenFile={openFileMatch}
+              onSearchingChange={setFileSearching}
+              onSummaryChange={setFileSummary}
+            />
           )}
-
-          {/* ── Sessions tab ─────────────────────────────────────────────── */}
           {tab === 'sessions' && (
-            <>
-              {sessionError && (
-                <div className="flex items-center gap-2 px-4 py-3 text-[12px] text-error">
-                  <AlertCircle size={13} />
-                  {sessionError}
-                </div>
-              )}
-              {!sessionError && !query.trim() && (
-                <div className="px-4 py-6 text-center text-text-tertiary text-[12px]">
-                  Type to search session labels and log file contents.
-                </div>
-              )}
-              {!sessionError && query.trim() && !sessionSearching && sessionResults.length === 0 && (
-                <div className="px-4 py-6 text-center text-text-tertiary text-[12px]">
-                  No sessions match &ldquo;{query.trim()}&rdquo;
-                </div>
-              )}
-              {!sessionError &&
-                sessionResults.map((r, idx) => {
-                  const isSel = sessionSelected === idx;
-                  return (
-                    <div
-                      key={`${r.session_id}-${r.line_no}-${idx}`}
-                      data-session-idx={idx}
-                      onMouseEnter={() => setSessionSelected(idx)}
-                      className={`flex flex-col px-4 py-2 transition-colors cursor-default ${
-                        isSel ? 'bg-accent-primary/10' : 'hover:bg-white/[0.04]'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <Clock size={10} className="text-text-tertiary flex-shrink-0" strokeWidth={1.75} />
-                        <span className="text-[12px] text-text-primary font-medium truncate">
-                          <HighlightedText text={r.label} query={query.trim()} />
-                        </span>
-                        {r.line_no > 0 && (
-                          <span className="text-[10px] text-text-tertiary flex-shrink-0 font-mono">
-                            line {r.line_no}
-                          </span>
-                        )}
-                        <span className="text-[10px] text-text-tertiary flex-shrink-0 ml-auto">
-                          {r.timestamp.slice(0, 10)}
-                        </span>
-                      </div>
-                      {r.snippet && r.snippet !== r.label && (
-                        <div className="mt-0.5 pl-4 text-[11.5px] text-text-tertiary font-mono truncate">
-                          <HighlightedText text={r.snippet} query={query.trim()} />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-            </>
+            <SessionsSearchTab
+              query={query}
+              active={tab === 'sessions'}
+              selected={sessionSelected}
+              onSelect={setSessionSelected}
+              onSearchingChange={setSessionSearching}
+              onResultCountChange={setSessionResultCount}
+            />
           )}
-
-          {/* ── Snippets tab ──────────────────────────────────────────────── */}
           {tab === 'snippets' && (
-            <>
-              {allSnippets.length === 0 && (
-                <div className="px-4 py-6 text-center text-text-tertiary text-[12px]">
-                  No snippets saved yet.
-                </div>
-              )}
-              {allSnippets.length > 0 && filteredSnippets.length === 0 && query.trim() && (
-                <div className="px-4 py-6 text-center text-text-tertiary text-[12px]">
-                  No snippets match &ldquo;{query.trim()}&rdquo;
-                </div>
-              )}
-              {filteredSnippets.map((s, idx) => {
-                const isSel = snippetSelected === idx;
-                return (
-                  <div
-                    key={s.id}
-                    onMouseEnter={() => setSnippetSelected(idx)}
-                    className={`flex flex-col px-4 py-2 transition-colors cursor-default ${
-                      isSel ? 'bg-accent-primary/10' : 'hover:bg-white/[0.04]'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Scissors size={10} className="text-text-tertiary flex-shrink-0" strokeWidth={1.75} />
-                      <span className="text-[12px] text-text-primary font-medium truncate">
-                        <HighlightedText text={s.title} query={query.trim()} />
-                      </span>
-                      {s.category && (
-                        <span className="text-[9px] uppercase tracking-wider text-accent-primary bg-accent-primary/15 px-1 rounded flex-shrink-0">
-                          {s.category}
-                        </span>
-                      )}
-                    </div>
-                    <div className="mt-0.5 pl-4 text-[11.5px] text-text-tertiary font-mono truncate">
-                      <HighlightedText
-                        text={s.content.split('\n')[0]}
-                        query={query.trim()}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </>
+            <SnippetsSearchTab
+              query={query}
+              selected={snippetSelected}
+              onSelect={setSnippetSelected}
+              onTotalChange={setSnippetTotal}
+              onFilteredChange={setSnippetFiltered}
+            />
           )}
         </div>
 
