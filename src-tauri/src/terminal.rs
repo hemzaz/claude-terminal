@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use portable_pty::{native_pty_system, Child, CommandBuilder, PtyPair, PtySize};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -6,15 +7,26 @@ use std::sync::{Arc, Mutex as StdMutex};
 use std::thread::JoinHandle;
 use tokio::sync::mpsc;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
 /// Shells allowed for PTY spawning on non-Windows platforms.
 /// Defined once here; the three `create_*_terminal` methods all reference this.
 const VALID_SHELLS: &[&str] = &[
-    "/bin/bash", "/bin/sh", "/bin/zsh", "/bin/fish", "/bin/dash",
-    "/usr/bin/bash", "/usr/bin/sh", "/usr/bin/zsh", "/usr/bin/fish", "/usr/bin/dash",
-    "/usr/local/bin/bash", "/usr/local/bin/zsh", "/usr/local/bin/fish",
-    "/opt/homebrew/bin/bash", "/opt/homebrew/bin/zsh", "/opt/homebrew/bin/fish",
+    "/bin/bash",
+    "/bin/sh",
+    "/bin/zsh",
+    "/bin/fish",
+    "/bin/dash",
+    "/usr/bin/bash",
+    "/usr/bin/sh",
+    "/usr/bin/zsh",
+    "/usr/bin/fish",
+    "/usr/bin/dash",
+    "/usr/local/bin/bash",
+    "/usr/local/bin/zsh",
+    "/usr/local/bin/fish",
+    "/opt/homebrew/bin/bash",
+    "/opt/homebrew/bin/zsh",
+    "/opt/homebrew/bin/fish",
 ];
 
 // ── PTY spawn helper ──────────────────────────────────────────────────────────
@@ -175,19 +187,34 @@ impl TerminalManager {
 
     /// Characters that could enable shell injection when passed through `cmd /C` or `sh -c`
     const SHELL_METACHARACTERS: &'static [char] = &[
-        '&', '|', ';', '`', '$', '(', ')', '{', '}', '<', '>', '^', '\n', '\r',
-        '\'', '"', '\\', '~', '*', '?', '[', ']', '!', '\t', '#',
+        '&', '|', ';', '`', '$', '(', ')', '{', '}', '<', '>', '^', '\n', '\r', '\'', '"', '\\',
+        '~', '*', '?', '[', ']', '!', '\t', '#',
     ];
 
     /// Environment variable names that must not be overridden by user profiles
     const BLOCKED_ENV_VARS: &'static [&'static str] = &[
-        "PATH", "PATHEXT", "COMSPEC", "SYSTEMROOT", "WINDIR",
-        "LD_PRELOAD", "LD_LIBRARY_PATH", "DYLD_INSERT_LIBRARIES", "DYLD_LIBRARY_PATH",
-        "NODE_OPTIONS", "NODE_EXTRA_CA_CERTS",
+        "PATH",
+        "PATHEXT",
+        "COMSPEC",
+        "SYSTEMROOT",
+        "WINDIR",
+        "LD_PRELOAD",
+        "LD_LIBRARY_PATH",
+        "DYLD_INSERT_LIBRARIES",
+        "DYLD_LIBRARY_PATH",
+        "NODE_OPTIONS",
+        "NODE_EXTRA_CA_CERTS",
         "ELECTRON_RUN_AS_NODE",
-        "HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
+        "HOME",
+        "USERPROFILE",
+        "HOMEDRIVE",
+        "HOMEPATH",
     ];
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Terminal creation mirrors the IPC payload plus PTY channel/log plumbing"
+    )]
     pub fn create_terminal(
         &mut self,
         label: String,
@@ -214,7 +241,9 @@ impl TerminalManager {
             .into_iter()
             .filter(|(key, _)| {
                 let upper = key.to_uppercase();
-                !Self::BLOCKED_ENV_VARS.iter().any(|blocked| blocked.eq_ignore_ascii_case(&upper))
+                !Self::BLOCKED_ENV_VARS
+                    .iter()
+                    .any(|blocked| blocked.eq_ignore_ascii_case(&upper))
             })
             .collect();
 
@@ -287,8 +316,12 @@ impl TerminalManager {
             pinned: false,
         };
 
-        let PtySpawnResult { pty_pair, writer, reader_handle, child } =
-            spawn_pty(cmd, id.clone(), tx, log_file_path)?;
+        let PtySpawnResult {
+            pty_pair,
+            writer,
+            reader_handle,
+            child,
+        } = spawn_pty(cmd, id.clone(), tx, log_file_path)?;
 
         self.terminals.insert(
             id.clone(),
@@ -333,12 +366,20 @@ impl TerminalManager {
         #[cfg(not(target_os = "windows"))]
         let cmd = {
             let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
-            let shell = if VALID_SHELLS.contains(&shell.as_str()) { shell } else { "/bin/bash".to_string() };
+            let shell = if VALID_SHELLS.contains(&shell.as_str()) {
+                shell
+            } else {
+                "/bin/bash".to_string()
+            };
             let mut c = CommandBuilder::new(&shell);
             // Single-quote the script name as defense-in-depth (already validated above).
             let mut full = String::from("npm run '");
             for ch in script_name.chars() {
-                if ch == '\'' { full.push_str("'\\''"); } else { full.push(ch); }
+                if ch == '\'' {
+                    full.push_str("'\\''");
+                } else {
+                    full.push(ch);
+                }
             }
             full.push('\'');
             c.arg("-lc");
@@ -368,8 +409,12 @@ impl TerminalManager {
             pinned: false,
         };
 
-        let PtySpawnResult { pty_pair, writer, reader_handle, child } =
-            spawn_pty(cmd, id.clone(), tx, None)?;
+        let PtySpawnResult {
+            pty_pair,
+            writer,
+            reader_handle,
+            child,
+        } = spawn_pty(cmd, id.clone(), tx, None)?;
 
         self.terminals.insert(
             id.clone(),
@@ -407,7 +452,11 @@ impl TerminalManager {
         #[cfg(not(target_os = "windows"))]
         let cmd = {
             let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
-            let shell = if VALID_SHELLS.contains(&shell.as_str()) { shell } else { "/bin/bash".to_string() };
+            let shell = if VALID_SHELLS.contains(&shell.as_str()) {
+                shell
+            } else {
+                "/bin/bash".to_string()
+            };
             let mut c = CommandBuilder::new(&shell);
             // Login + interactive so the user gets their normal prompt.
             c.arg("-li");
@@ -436,8 +485,12 @@ impl TerminalManager {
             pinned: false,
         };
 
-        let PtySpawnResult { pty_pair, writer, reader_handle, child } =
-            spawn_pty(cmd, id.clone(), tx, None)?;
+        let PtySpawnResult {
+            pty_pair,
+            writer,
+            reader_handle,
+            child,
+        } = spawn_pty(cmd, id.clone(), tx, None)?;
 
         self.terminals.insert(
             id.clone(),
@@ -462,9 +515,12 @@ impl TerminalManager {
 
     pub fn write(&self, id: &str, data: &[u8]) -> Result<(), String> {
         if let Some(terminal) = self.terminals.get(id) {
-            let mut w = terminal.writer.lock()
+            let mut w = terminal
+                .writer
+                .lock()
                 .map_err(|_| "Terminal writer mutex poisoned".to_string())?;
-            w.write_all(data).map_err(|e| format!("Failed to write: {}", e))?;
+            w.write_all(data)
+                .map_err(|e| format!("Failed to write: {}", e))?;
             w.flush().map_err(|e| format!("Failed to flush: {}", e))
         } else {
             Err("Terminal not found".to_string())
@@ -522,7 +578,9 @@ impl TerminalManager {
                     // SAFETY: `pid` is a valid process ID returned by the OS for a child
                     // we spawned. SIGTERM asks the process to exit without forcing it,
                     // so this is safe even if the process has already exited.
-                    unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM); }
+                    unsafe {
+                        libc::kill(pid as libc::pid_t, libc::SIGTERM);
+                    }
                 }
             }
             #[cfg(not(unix))]
@@ -626,7 +684,11 @@ mod tests {
         };
 
         let result = spawn_pty(cmd, "test-id".to_string(), tx, None);
-        assert!(result.is_ok(), "spawn_pty should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "spawn_pty should succeed: {:?}",
+            result.err()
+        );
     }
 
     /// Verify that `spawn_pty` with a log file path accepts the parameter
@@ -654,7 +716,11 @@ mod tests {
         };
 
         let result = spawn_pty(cmd, "test-log-id".to_string(), tx, Some(log_path.clone()));
-        assert!(result.is_ok(), "spawn_pty with log_file should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "spawn_pty with log_file should succeed: {:?}",
+            result.err()
+        );
 
         // Brief pause to let the reader thread run, then clean up
         std::thread::sleep(std::time::Duration::from_millis(50));

@@ -117,7 +117,7 @@ export function SettingsModal() {
         setUpdateStatus('uptodate');
         setUpdateMessage('You have the latest version!');
       }
-    } catch (error) {
+    } catch (_error) {
       // Fallback to just getting version
       try {
         const version = await invoke<string>('get_claude_version');
@@ -620,7 +620,6 @@ export function SettingsModal() {
                 {isRecording ? (
                   <div
                     tabIndex={0}
-                    // eslint-disable-next-line jsx-a11y/no-autofocus
                     autoFocus
                     onKeyDown={handleRecordKeyDown}
                     onBlur={() => setIsRecording(false)}

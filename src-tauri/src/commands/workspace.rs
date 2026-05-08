@@ -15,10 +15,7 @@ pub async fn get_workspaces(
 }
 
 #[command]
-pub async fn delete_workspace(
-    state: State<'_, AppState>,
-    name: String,
-) -> Result<(), String> {
+pub async fn delete_workspace(state: State<'_, AppState>, name: String) -> Result<(), String> {
     wrap_cmd("delete_workspace", async move {
         let db = state.db.lock().await;
         db.delete_workspace(&name)

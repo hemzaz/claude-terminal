@@ -60,13 +60,11 @@ fn calculate_cost(
 ///
 /// `[^\S\n]+` is used instead of `\s+` so patterns never match across newlines.
 fn parse_tokens_from_log(content: &str) -> TokenCounts {
-    let slash_re =
-        Regex::new(r"Tokens:[^\S\n]+(\d+)[^\S\n]+in[^\S\n]*/[^\S\n]+(\d+)[^\S\n]+out")
-            .expect("valid regex");
+    let slash_re = Regex::new(r"Tokens:[^\S\n]+(\d+)[^\S\n]+in[^\S\n]*/[^\S\n]+(\d+)[^\S\n]+out")
+        .expect("valid regex");
     let input_noun_re = Regex::new(r"(\d+)[^\S\n]+input[^\S\n]+tokens").expect("valid regex");
     let output_noun_re = Regex::new(r"(\d+)[^\S\n]+output[^\S\n]+tokens").expect("valid regex");
-    let input_label_re =
-        Regex::new(r"(?i)input[^\S\n]+tokens:[^\S\n]+(\d+)").expect("valid regex");
+    let input_label_re = Regex::new(r"(?i)input[^\S\n]+tokens:[^\S\n]+(\d+)").expect("valid regex");
     let output_label_re =
         Regex::new(r"(?i)output[^\S\n]+tokens:[^\S\n]+(\d+)").expect("valid regex");
 
@@ -128,8 +126,8 @@ fn collect_cost_stats(
         });
     }
 
-    let entries = std::fs::read_dir(&logs_dir)
-        .map_err(|e| format!("Failed to read logs directory: {e}"))?;
+    let entries =
+        std::fs::read_dir(&logs_dir).map_err(|e| format!("Failed to read logs directory: {e}"))?;
 
     let mut daily_map: HashMap<String, (u64, u64)> = HashMap::new();
     let mut sessions: Vec<SessionCostEntry> = Vec::new();
@@ -208,7 +206,12 @@ fn collect_cost_stats(
     let mut daily: Vec<DailyCostEntry> = daily_map
         .into_iter()
         .map(|(date, (input, output))| DailyCostEntry {
-            cost_usd: calculate_cost(input, output, input_cost_per_million, output_cost_per_million),
+            cost_usd: calculate_cost(
+                input,
+                output,
+                input_cost_per_million,
+                output_cost_per_million,
+            ),
             date,
             input_tokens: input,
             output_tokens: output,
@@ -220,8 +223,12 @@ fn collect_cost_stats(
         daily = daily.into_iter().skip(skip).collect();
     }
 
-    let total_cost_usd =
-        calculate_cost(total_input, total_output, input_cost_per_million, output_cost_per_million);
+    let total_cost_usd = calculate_cost(
+        total_input,
+        total_output,
+        input_cost_per_million,
+        output_cost_per_million,
+    );
 
     Ok(CostStats {
         total_input_tokens: total_input,

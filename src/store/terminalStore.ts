@@ -1,21 +1,13 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { Terminal } from '@xterm/xterm';
+import { appendContextUsageBuffer, extractContextUsageFraction } from '../lib/contextUsage';
 import type { WorktreeDetectResult } from '../types/git';
+import type { TerminalConfig } from '../types/ipc';
+import { createScriptActions } from './terminal/scriptActions';
+import { createShellActions } from './terminal/shellActions';
 
-export interface TerminalConfig {
-  id: string;
-  label: string;
-  nickname: string | null;
-  profile_id: string | null;
-  working_directory: string;
-  claude_args: string[];
-  env_vars: Record<string, string>;
-  created_at: string;
-  status: 'Running' | 'Idle' | 'Error' | 'Stopped';
-  color_tag: string | null;
-  pinned: boolean;
-}
+export type { TerminalConfig } from '../types/ipc';
 
 export interface LoopInfo {
   interval: string;
@@ -27,7 +19,7 @@ export interface ClosedTerminalRecord {
   closedAt: number; // milliseconds timestamp (Date.now())
 }
 
-interface TerminalInstance {
+export interface TerminalInstance {
   config: TerminalConfig;
   xterm: Terminal | null;
   restoredOutput?: string;
@@ -47,7 +39,7 @@ interface TerminalInstance {
   contextUsageFraction?: number | null;
 }
 
-interface TerminalState {
+export interface TerminalState {
   terminals: Map<string, TerminalInstance>;
   activeTerminalId: string | null;
   unreadTerminalIds: Set<string>;
@@ -115,31 +107,7 @@ interface TerminalState {
 
 const CONTEXT_BUF_SIZE = 768;
 const contextBuffers = new Map<string, string>();
-const ANSI_STRIP_RE = /\x1b\[[0-9;?]*[A-Za-z]|\x1b[()][012AB]|\x1b.|\r/g;
 const textDecoder = new TextDecoder('utf-8', { fatal: false });
-
-function extractContextFraction(buf: string): number | null {
-  const clean = buf.replace(ANSI_STRIP_RE, '');
-
-  // Pattern 1: "context: 82%" / "82% context" / "[context 82%]"
-  const m1 = clean.match(
-    /context[^%\n]{0,60}?(\d{1,3})%|(\d{1,3})%[^%\n]{0,40}?context/i,
-  );
-  if (m1) {
-    const pct = parseInt(m1[1] ?? m1[2], 10);
-    if (pct >= 0 && pct <= 100) return pct / 100;
-  }
-
-  // Pattern 2: token fraction "164,523 / 200,000 tokens"
-  const m2 = clean.match(/(\d[\d,]+)\s*\/\s*(\d[\d,]+)\s*(?:tokens?|tok)?\b/i);
-  if (m2) {
-    const used = parseInt(m2[1].replace(/,/g, ''), 10);
-    const total = parseInt(m2[2].replace(/,/g, ''), 10);
-    if (total >= 10_000 && used <= total) return Math.min(used / total, 1.0);
-  }
-
-  return null;
-}
 // --------------------------------------------------------------------------
 
 export const useTerminalStore = create<TerminalState>((set, get) => ({
@@ -366,9 +334,9 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     // Only update Zustand state when the fraction changes meaningfully.
     const chunk = textDecoder.decode(data);
     const prev = contextBuffers.get(id) ?? '';
-    const next = (prev + chunk).slice(-CONTEXT_BUF_SIZE);
+    const next = appendContextUsageBuffer(prev, chunk, CONTEXT_BUF_SIZE);
     contextBuffers.set(id, next);
-    const fraction = extractContextFraction(next);
+    const fraction = extractContextUsageFraction(next);
     if (fraction !== null) {
       const current = instance?.contextUsageFraction ?? null;
       if (current === null || Math.abs(fraction - current) >= 0.005) {
@@ -470,109 +438,8 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     return { terminals: next };
   }),
 
-  runScript: async (parentId, scriptName, cwdOverride) => {
-    const parent = get().terminals.get(parentId);
-    if (!parent) throw new Error('Parent terminal not found');
-
-    // Replace any existing script child for this parent so the UI always
-    // shows the most recently-requested script.
-    const existingChildId = get().scriptChildren.get(parentId);
-    if (existingChildId) {
-      await get().closeScript(parentId).catch(() => { /* non-fatal: no existing script child to close */ });
-    }
-
-    const cwd = cwdOverride ?? parent.config.working_directory;
-    const config = await invoke<TerminalConfig>('create_script_terminal', {
-      cwd,
-      scriptName,
-    });
-
-    set((state) => {
-      const nextTerminals = new Map(state.terminals);
-      nextTerminals.set(config.id, {
-        config,
-        xterm: null,
-        isWorktree: false,
-        scriptName,
-        scriptParentId: parentId,
-      });
-      const nextChildren = new Map(state.scriptChildren);
-      nextChildren.set(parentId, config.id);
-      return { terminals: nextTerminals, scriptChildren: nextChildren };
-    });
-
-    return config.id;
-  },
-
-  closeScript: async (parentId) => {
-    const childId = get().scriptChildren.get(parentId);
-    if (!childId) return;
-    try {
-      await invoke('close_terminal', { id: childId });
-    } catch {
-      // Already closed — fall through to store cleanup.
-    }
-    set((state) => {
-      const nextTerminals = new Map(state.terminals);
-      const inst = nextTerminals.get(childId);
-      if (inst?.xterm) inst.xterm.dispose();
-      nextTerminals.delete(childId);
-      const nextChildren = new Map(state.scriptChildren);
-      nextChildren.delete(parentId);
-      return { terminals: nextTerminals, scriptChildren: nextChildren };
-    });
-  },
-
-  openShellTerminal: async (label, cwd) => {
-    const config = await invoke<TerminalConfig>('create_shell_terminal', { label, cwd });
-    set((state) => {
-      const nextTerminals = new Map(state.terminals);
-      nextTerminals.set(config.id, {
-        config,
-        xterm: null,
-        isWorktree: false,
-        isShellTerminal: true,
-      });
-      return {
-        terminals: nextTerminals,
-        bottomTerminalIds: [...state.bottomTerminalIds, config.id],
-        activeBottomTerminalId: config.id,
-      };
-    });
-    return config.id;
-  },
-
-  closeShellTerminal: async (id) => {
-    try {
-      await invoke('close_terminal', { id });
-    } catch {
-      // Already gone — fall through to store cleanup.
-    }
-    set((state) => {
-      const nextTerminals = new Map(state.terminals);
-      const inst = nextTerminals.get(id);
-      if (inst?.xterm) inst.xterm.dispose();
-      nextTerminals.delete(id);
-      const nextIds = state.bottomTerminalIds.filter((x) => x !== id);
-      let nextActive: string | null = state.activeBottomTerminalId;
-      if (nextActive === id) {
-        const removedIdx = state.bottomTerminalIds.indexOf(id);
-        if (nextIds.length === 0) {
-          nextActive = null;
-        } else {
-          const fallbackIdx = Math.min(Math.max(removedIdx, 0), nextIds.length - 1);
-          nextActive = nextIds[fallbackIdx];
-        }
-      }
-      return {
-        terminals: nextTerminals,
-        bottomTerminalIds: nextIds,
-        activeBottomTerminalId: nextActive,
-      };
-    });
-  },
-
-  setActiveBottomTerminal: (id) => set({ activeBottomTerminalId: id }),
+  ...createScriptActions(set, get),
+  ...createShellActions(set),
 
   toggleBroadcastMember: (id) => set((state) => {
     const next = new Set(state.broadcastGroupIds);

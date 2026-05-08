@@ -20,26 +20,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore, GridLayout } from '../store/appStore';
 import { TerminalView } from './TerminalView';
+import type { LayoutTemplate, SavedTerminalSlot } from '../types/ipc';
 import { setDragData, getDragData, isTerminalDrag } from '../utils/dragDrop';
-
-// ─── Layout template types ────────────────────────────────────────────────────
-
-interface SavedTerminalSlot {
-  label: string;
-  working_directory: string;
-  claude_args: string[];
-  env_vars: Record<string, string>;
-  color_tag: string | null;
-  nickname: string | null;
-}
-
-interface LayoutTemplate {
-  id: string;
-  name: string;
-  layout: string;
-  terminal_configs: string; // JSON of SavedTerminalSlot[]
-  created_at: string;
-}
 
 // Grid layout configurations
 const GRID_CONFIGS: Record<GridLayout, { cols: number; rows: number }> = {

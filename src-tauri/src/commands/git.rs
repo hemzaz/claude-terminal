@@ -110,7 +110,11 @@ fn parse_git_status_output(stdout: &str) -> Vec<FileChange> {
         let y = line.as_bytes().get(1).copied().unwrap_or(b' ') as char;
         let raw_path = &line[3..];
         let path = if raw_path.contains(" -> ") {
-            raw_path.split(" -> ").nth(1).unwrap_or(raw_path).to_string()
+            raw_path
+                .split(" -> ")
+                .nth(1)
+                .unwrap_or(raw_path)
+                .to_string()
         } else {
             raw_path.to_string()
         };
@@ -308,8 +312,7 @@ fn compute_diff_text(
         let full_path = std::path::Path::new(working_directory).join(file_path);
         return match std::fs::read_to_string(&full_path) {
             Ok(content) => {
-                let lines: Vec<String> =
-                    content.lines().map(|l| format!("+{}", l)).collect();
+                let lines: Vec<String> = content.lines().map(|l| format!("+{}", l)).collect();
                 Ok(format!(
                     "--- /dev/null\n+++ b/{}\n@@ -0,0 +1,{} @@\n{}",
                     file_path,
@@ -322,15 +325,13 @@ fn compute_diff_text(
     }
 
     if is_deleted_file {
-        let show_output =
-            shell_command("git", &["show", &format!("HEAD:{}", file_path)])
-                .current_dir(working_directory)
-                .output();
+        let show_output = shell_command("git", &["show", &format!("HEAD:{}", file_path)])
+            .current_dir(working_directory)
+            .output();
         return match show_output {
             Ok(output) if output.status.success() => {
                 let content = String::from_utf8_lossy(&output.stdout);
-                let lines: Vec<String> =
-                    content.lines().map(|l| format!("-{}", l)).collect();
+                let lines: Vec<String> = content.lines().map(|l| format!("-{}", l)).collect();
                 Ok(format!(
                     "--- a/{}\n+++ /dev/null\n@@ -1,{} +0,0 @@\n{}",
                     file_path,
@@ -358,11 +359,10 @@ fn compute_diff_text(
 
     // If unstaged diff is empty, try staged diff (file might be fully staged)
     if text.trim().is_empty() && !staged {
-        let staged_output =
-            shell_command("git", &["diff", "--cached", "--", file_path])
-                .current_dir(working_directory)
-                .output()
-                .map_err(|e| format!("Failed to run git diff --cached: {}", e))?;
+        let staged_output = shell_command("git", &["diff", "--cached", "--", file_path])
+            .current_dir(working_directory)
+            .output()
+            .map_err(|e| format!("Failed to run git diff --cached: {}", e))?;
         return Ok(String::from_utf8_lossy(&staged_output.stdout).to_string());
     }
 
@@ -385,14 +385,14 @@ pub async fn get_file_diff(
                 .find(|c| c.id == id)
                 .ok_or_else(|| "Terminal not found".to_string())?;
 
-            let status_output =
-                shell_command("git", &["status", "--porcelain", "--", &file_path])
-                    .current_dir(&config.working_directory)
-                    .output()
-                    .map_err(|e| format!("Failed to run git status: {}", e))?;
+            let status_output = shell_command("git", &["status", "--porcelain", "--", &file_path])
+                .current_dir(&config.working_directory)
+                .output()
+                .map_err(|e| format!("Failed to run git status: {}", e))?;
 
-            let status_str =
-                String::from_utf8_lossy(&status_output.stdout).trim().to_string();
+            let status_str = String::from_utf8_lossy(&status_output.stdout)
+                .trim()
+                .to_string();
             let file_status = if status_str.len() >= 2 {
                 status_str[..2].trim().to_string()
             } else {
@@ -404,10 +404,8 @@ pub async fn get_file_diff(
 
         let is_new_file = file_status == "??" || file_status == "A";
         let is_deleted_file = file_status == "D";
-        let diff_text =
-            compute_diff_text(&working_directory, &file_path, &file_status, staged)?;
-        let is_binary =
-            diff_text.contains("Binary files") && diff_text.contains("differ");
+        let diff_text = compute_diff_text(&working_directory, &file_path, &file_status, staged)?;
+        let is_binary = diff_text.contains("Binary files") && diff_text.contains("differ");
 
         Ok(FileDiffResult {
             file_path,
@@ -430,14 +428,14 @@ pub async fn get_path_file_diff(
     wrap_cmd("get_path_file_diff", async move {
         validate_path_is_trusted(&state, &path).await?;
 
-        let status_output =
-            shell_command("git", &["status", "--porcelain", "--", &file_path])
-                .current_dir(&path)
-                .output()
-                .map_err(|e| format!("Failed to run git status: {}", e))?;
+        let status_output = shell_command("git", &["status", "--porcelain", "--", &file_path])
+            .current_dir(&path)
+            .output()
+            .map_err(|e| format!("Failed to run git status: {}", e))?;
 
-        let status_str =
-            String::from_utf8_lossy(&status_output.stdout).trim().to_string();
+        let status_str = String::from_utf8_lossy(&status_output.stdout)
+            .trim()
+            .to_string();
         let file_status = if status_str.len() >= 2 {
             status_str[..2].trim().to_string()
         } else {
@@ -447,8 +445,7 @@ pub async fn get_path_file_diff(
         let is_new_file = file_status == "??" || file_status == "A";
         let is_deleted_file = file_status == "D";
         let diff_text = compute_diff_text(&path, &file_path, &file_status, staged)?;
-        let is_binary =
-            diff_text.contains("Binary files") && diff_text.contains("differ");
+        let is_binary = diff_text.contains("Binary files") && diff_text.contains("differ");
 
         Ok(FileDiffResult {
             file_path,
@@ -555,11 +552,14 @@ pub async fn get_worktree_info(
             .output()
             .ok()
             .filter(|o| o.status.success())
-            .map(|o| {
+            .and_then(|o| {
                 let b = String::from_utf8_lossy(&o.stdout).trim().to_string();
-                if b == "HEAD" { None } else { Some(b) }
-            })
-            .flatten();
+                if b == "HEAD" {
+                    None
+                } else {
+                    Some(b)
+                }
+            });
 
         Ok(WorktreeDetectResult {
             is_git_repo: true,
@@ -605,11 +605,7 @@ fn list_worktrees_internal(path: &str) -> Result<Vec<WorktreeInfo>, String> {
             } else if let Some(h) = line.strip_prefix("HEAD ") {
                 head_sha = h[..7.min(h.len())].to_string();
             } else if let Some(b) = line.strip_prefix("branch ") {
-                branch = Some(
-                    b.strip_prefix("refs/heads/")
-                        .unwrap_or(b)
-                        .to_string(),
-                );
+                branch = Some(b.strip_prefix("refs/heads/").unwrap_or(b).to_string());
             } else if line == "bare" {
                 is_bare = true;
             } else if line == "detached" {
@@ -757,8 +753,7 @@ pub async fn git_commit(
                 let status = run_git(&path, &["diff", "--cached", "--name-only"])?;
                 if status.trim().is_empty() {
                     return Err(
-                        "Nothing is staged — stage files first or choose 'stage all'"
-                            .to_string(),
+                        "Nothing is staged — stage files first or choose 'stage all'".to_string(),
                     );
                 }
             }
@@ -788,10 +783,7 @@ pub async fn git_commit(
 }
 
 #[command]
-pub async fn git_push(
-    state: State<'_, AppState>,
-    path: String,
-) -> Result<(), String> {
+pub async fn git_push(state: State<'_, AppState>, path: String) -> Result<(), String> {
     wrap_cmd("git_push", async move {
         validate_path_is_trusted(&state, &path).await?;
         run_git(&path, &["push"]).map(|_| ())
@@ -814,9 +806,7 @@ pub async fn git_stash_push(
         }
         if let Some(m) = message.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
             if m.chars().any(|c| c.is_control()) {
-                return Err(
-                    "Stash message cannot contain control characters".to_string(),
-                );
+                return Err("Stash message cannot contain control characters".to_string());
             }
             args.push("-m".into());
             args.push(m.to_string());
@@ -980,6 +970,7 @@ pub async fn create_worktree(
     worktree_path: String,
     branch: String,
     create_branch: bool,
+    base_ref: Option<String>,
 ) -> Result<WorktreeInfo, String> {
     wrap_cmd("create_worktree", async move {
         validate_path_is_trusted(&state, &repo_path).await?;
@@ -995,11 +986,16 @@ pub async fn create_worktree(
                     .to_string(),
             );
         }
+        if let Some(base) = base_ref.as_deref() {
+            reject_bad_ref(base, "base ref")?;
+        }
 
         let output = if create_branch {
-            shell_command("git", &["worktree", "add", "-b", &branch, &worktree_path])
-                .current_dir(&repo_path)
-                .output()
+            let mut args = vec!["worktree", "add", "-b", &branch, &worktree_path];
+            if let Some(base) = base_ref.as_deref() {
+                args.push(base);
+            }
+            shell_command("git", &args).current_dir(&repo_path).output()
         } else {
             shell_command("git", &["worktree", "add", &worktree_path, &branch])
                 .current_dir(&repo_path)
@@ -1094,7 +1090,12 @@ pub async fn get_upstream_branch(
         validate_path_is_trusted(&state, &path).await?;
         let output = shell_command(
             "git",
-            &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+            &[
+                "rev-parse",
+                "--abbrev-ref",
+                "--symbolic-full-name",
+                "@{upstream}",
+            ],
         )
         .current_dir(&path)
         .output()
@@ -1103,7 +1104,11 @@ pub async fn get_upstream_branch(
             return Ok(None);
         }
         let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if s.is_empty() { Ok(None) } else { Ok(Some(s)) }
+        if s.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(s))
+        }
     })
     .await
 }
@@ -1132,8 +1137,7 @@ pub async fn git_pull_branch(
         let dirty = run_git(&path, &["status", "--porcelain"])?;
         if !dirty.trim().is_empty() {
             return Err(
-                "Working tree has uncommitted changes — commit or stash first, then pull."
-                    .into(),
+                "Working tree has uncommitted changes — commit or stash first, then pull.".into(),
             );
         }
 
@@ -1191,7 +1195,11 @@ fn git_branch_for(path: &std::path::Path) -> Option<String> {
         return None;
     }
     let b = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if b == "HEAD" || b.is_empty() { None } else { Some(b) }
+    if b == "HEAD" || b.is_empty() {
+        None
+    } else {
+        Some(b)
+    }
 }
 
 fn git_is_worktree(path: &std::path::Path) -> bool {
@@ -1237,7 +1245,9 @@ fn git_ahead_behind(path: &std::path::Path) -> (u32, u32) {
     )
     .current_dir(path)
     .output();
-    let Ok(out) = out else { return (0, 0); };
+    let Ok(out) = out else {
+        return (0, 0);
+    };
     if !out.status.success() {
         return (0, 0);
     }
@@ -1275,8 +1285,12 @@ fn scan_for_repos(
     results: &mut Vec<ScannedGitRepo>,
     limit: usize,
 ) {
-    if results.len() >= limit { return; }
-    if depth > max_depth { return; }
+    if results.len() >= limit {
+        return;
+    }
+    if depth > max_depth {
+        return;
+    }
 
     let dot_git = current.join(".git");
     if dot_git.exists() {
@@ -1301,20 +1315,32 @@ fn scan_for_repos(
             ahead,
             behind,
         });
-        if !is_main { return; }
+        if !is_main {
+            return;
+        }
     }
 
-    let Ok(entries) = std::fs::read_dir(current) else { return; };
+    let Ok(entries) = std::fs::read_dir(current) else {
+        return;
+    };
     for entry in entries.flatten() {
-        if results.len() >= limit { return; }
+        if results.len() >= limit {
+            return;
+        }
         let path = entry.path();
-        if !path.is_dir() { continue; }
+        if !path.is_dir() {
+            continue;
+        }
         let name = match path.file_name().and_then(|n| n.to_str()) {
             Some(n) => n,
             None => continue,
         };
-        if name.starts_with('.') && name != ".git" { continue; }
-        if SCAN_SKIP_DIRS.iter().any(|s| *s == name) { continue; }
+        if name.starts_with('.') && name != ".git" {
+            continue;
+        }
+        if SCAN_SKIP_DIRS.contains(&name) {
+            continue;
+        }
         scan_for_repos(root, &path, depth + 1, max_depth, results, limit);
     }
 }
@@ -1357,8 +1383,8 @@ pub async fn list_package_scripts(
             Ok(b) => b,
             Err(_) => return Ok(vec![]),
         };
-        let json: serde_json::Value = serde_json::from_slice(&bytes)
-            .map_err(|e| format!("Invalid package.json: {}", e))?;
+        let json: serde_json::Value =
+            serde_json::from_slice(&bytes).map_err(|e| format!("Invalid package.json: {}", e))?;
         let scripts = match json.get("scripts").and_then(|v| v.as_object()) {
             Some(m) => m,
             None => return Ok(vec![]),
@@ -1419,9 +1445,9 @@ pub async fn git_discard_file(
 
         if untracked {
             let joined = std::path::Path::new(&path).join(&file);
-            let canonical_target = joined.canonicalize().map_err(|e| {
-                format!("Cannot resolve '{}': {}", joined.display(), e)
-            })?;
+            let canonical_target = joined
+                .canonicalize()
+                .map_err(|e| format!("Cannot resolve '{}': {}", joined.display(), e))?;
             let canonical_root = std::path::Path::new(&path)
                 .canonicalize()
                 .map_err(|e| format!("Cannot resolve repo '{}': {}", path, e))?;
@@ -1431,9 +1457,8 @@ pub async fn git_discard_file(
                     canonical_target.display()
                 ));
             }
-            let meta = std::fs::metadata(&canonical_target).map_err(|e| {
-                format!("Failed to stat '{}': {}", canonical_target.display(), e)
-            })?;
+            let meta = std::fs::metadata(&canonical_target)
+                .map_err(|e| format!("Failed to stat '{}': {}", canonical_target.display(), e))?;
             if meta.is_dir() {
                 std::fs::remove_dir_all(&canonical_target)
                     .map_err(|e| format!("Failed to delete directory: {}", e))?;
@@ -1451,15 +1476,13 @@ pub async fn git_discard_file(
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
             let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            return Err(
-                if !stderr.is_empty() {
-                    stderr
-                } else if !stdout.is_empty() {
-                    stdout
-                } else {
-                    "git checkout failed".into()
-                },
-            );
+            return Err(if !stderr.is_empty() {
+                stderr
+            } else if !stdout.is_empty() {
+                stdout
+            } else {
+                "git checkout failed".into()
+            });
         }
         Ok(())
     })

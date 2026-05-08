@@ -3,17 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
-
-interface SavedTerminalConfig {
-  id: string;
-  label: string;
-  nickname: string | null;
-  working_directory: string;
-  claude_args: string[];
-  env_vars: Record<string, string>;
-  color_tag: string | null;
-  pinned?: boolean;
-}
+import type { SavedTerminalConfig } from '../types/ipc';
 
 /**
  * Manages session persistence:
@@ -67,7 +57,7 @@ export function useAppSession(showSetup: boolean | null) {
     };
 
     checkLastSession();
-  }, [showSetup]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [showSetup]);
 
   // Auto-save session every 30 seconds
   useEffect(() => {

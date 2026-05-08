@@ -4,15 +4,7 @@ import { X, Clock, Play, Search, RotateCw } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
-
-interface SessionHistoryEntry {
-  id: number;
-  terminal_id: string;
-  label: string;
-  started_at: string;
-  ended_at: string | null;
-  log_path: string | null;
-}
+import type { SessionHistoryEntry } from '../types/ipc';
 
 function formatDuration(start: string, end: string | null): string {
   if (!end) return 'running';

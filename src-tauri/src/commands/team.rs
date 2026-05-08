@@ -66,7 +66,11 @@ pub async fn get_team_tasks(team_name: String) -> Result<Vec<TaskInfo>, String> 
                 Err(_) => continue,
             };
 
-            let id = val.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let id = val
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             let subject = val
                 .get("subject")
                 .and_then(|v| v.as_str())
@@ -77,10 +81,7 @@ pub async fn get_team_tasks(team_name: String) -> Result<Vec<TaskInfo>, String> 
                 .and_then(|v| v.as_str())
                 .unwrap_or("pending")
                 .to_string();
-            let owner = val
-                .get("owner")
-                .and_then(|v| v.as_str())
-                .map(String::from);
+            let owner = val.get("owner").and_then(|v| v.as_str()).map(String::from);
             let active_form = val
                 .get("activeForm")
                 .and_then(|v| v.as_str())

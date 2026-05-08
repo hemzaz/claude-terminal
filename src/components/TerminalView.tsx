@@ -320,10 +320,6 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       webglAddon?.dispose();
       terminal.dispose();
     };
-    // Intentionally omit store action refs from deps — they are stable via
-    // getState() and including them caused the xterm instance to be recreated
-    // on every unrelated store update.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [terminalId, !!instance, toggleSearch]);
 
   // OS → terminal file drag-drop. Tauri intercepts drag events at the window

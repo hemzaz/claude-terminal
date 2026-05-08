@@ -1,8 +1,8 @@
 use crate::config::ConfigProfile;
 use crate::terminal::TerminalConfig;
-use rusqlite::{params, Connection};
 use directories::ProjectDirs;
-use serde::{Serialize, Deserialize};
+use rusqlite::{params, Connection};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LayoutTemplate {
@@ -159,33 +159,41 @@ impl Database {
             )
             .map_err(|e| e.to_string())?;
 
-        let profiles = stmt.query_map([], |row| {
-            Ok(ConfigProfile {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                description: row.get(2)?,
-                working_directory: row.get(3)?,
-                claude_args: serde_json::from_str(&row.get::<_, String>(4)?).unwrap_or_default(),
-                env_vars: serde_json::from_str(&row.get::<_, String>(5)?).unwrap_or_default(),
-                is_default: row.get::<_, i32>(6)? != 0,
-                last_used_at: row.get(7)?,
+        let profiles = stmt
+            .query_map([], |row| {
+                Ok(ConfigProfile {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    description: row.get(2)?,
+                    working_directory: row.get(3)?,
+                    claude_args: serde_json::from_str(&row.get::<_, String>(4)?)
+                        .unwrap_or_default(),
+                    env_vars: serde_json::from_str(&row.get::<_, String>(5)?).unwrap_or_default(),
+                    is_default: row.get::<_, i32>(6)? != 0,
+                    last_used_at: row.get(7)?,
+                })
             })
-        }).map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?;
 
-        profiles.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+        profiles
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
     }
 
     pub fn delete_profile(&self, id: &str) -> Result<(), String> {
-        self.conn.execute("DELETE FROM profiles WHERE id = ?1", params![id])
+        self.conn
+            .execute("DELETE FROM profiles WHERE id = ?1", params![id])
             .map_err(|e| e.to_string())?;
         Ok(())
     }
 
     pub fn update_profile_last_used(&self, id: &str, timestamp: &str) -> Result<(), String> {
-        self.conn.execute(
-            "UPDATE profiles SET last_used_at = ?1 WHERE id = ?2",
-            params![timestamp, id],
-        ).map_err(|e| e.to_string())?;
+        self.conn
+            .execute(
+                "UPDATE profiles SET last_used_at = ?1 WHERE id = ?2",
+                params![timestamp, id],
+            )
+            .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -207,31 +215,46 @@ impl Database {
             .prepare("SELECT name, terminals, created_at FROM workspaces WHERE name != '__last_session__' ORDER BY created_at DESC")
             .map_err(|e| e.to_string())?;
 
-        let workspaces = stmt.query_map([], |row| {
-            let name: String = row.get(0)?;
-            let terminals_json: String = row.get(1)?;
-            let created_at: String = row.get(2)?;
-            let terminal_count = serde_json::from_str::<Vec<serde_json::Value>>(&terminals_json)
-                .map(|v| v.len())
-                .unwrap_or(0);
-            Ok(WorkspaceInfo { name, terminal_count, created_at })
-        }).map_err(|e| e.to_string())?;
+        let workspaces = stmt
+            .query_map([], |row| {
+                let name: String = row.get(0)?;
+                let terminals_json: String = row.get(1)?;
+                let created_at: String = row.get(2)?;
+                let terminal_count =
+                    serde_json::from_str::<Vec<serde_json::Value>>(&terminals_json)
+                        .map(|v| v.len())
+                        .unwrap_or(0);
+                Ok(WorkspaceInfo {
+                    name,
+                    terminal_count,
+                    created_at,
+                })
+            })
+            .map_err(|e| e.to_string())?;
 
-        workspaces.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+        workspaces
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
     }
 
     pub fn delete_workspace(&self, name: &str) -> Result<(), String> {
         if name.starts_with("__") {
             return Err("Cannot delete internal workspaces".to_string());
         }
-        self.conn.execute("DELETE FROM workspaces WHERE name = ?1", params![name])
+        self.conn
+            .execute("DELETE FROM workspaces WHERE name = ?1", params![name])
             .map_err(|e| e.to_string())?;
         Ok(())
     }
 
     pub fn load_workspace(&self, name: &str) -> Result<Vec<TerminalConfig>, String> {
-        let terminals_json: String = self.conn
-            .query_row("SELECT terminals FROM workspaces WHERE name = ?1", params![name], |row| row.get(0))
+        let terminals_json: String = self
+            .conn
+            .query_row(
+                "SELECT terminals FROM workspaces WHERE name = ?1",
+                params![name],
+                |row| row.get(0),
+            )
             .map_err(|e| e.to_string())?;
 
         serde_json::from_str(&terminals_json).map_err(|e| e.to_string())
@@ -258,12 +281,21 @@ impl Database {
 
     pub fn clear_last_session(&self) -> Result<(), String> {
         self.conn
-            .execute("DELETE FROM workspaces WHERE name = ?1", params![Self::LAST_SESSION_KEY])
+            .execute(
+                "DELETE FROM workspaces WHERE name = ?1",
+                params![Self::LAST_SESSION_KEY],
+            )
             .map_err(|e| e.to_string())?;
         Ok(())
     }
 
-    pub fn insert_session_history(&self, terminal_id: &str, label: &str, started_at: &str, log_path: Option<&str>) -> Result<i64, String> {
+    pub fn insert_session_history(
+        &self,
+        terminal_id: &str,
+        label: &str,
+        started_at: &str,
+        log_path: Option<&str>,
+    ) -> Result<i64, String> {
         self.conn.execute(
             "INSERT INTO session_history (terminal_id, label, started_at, log_path) VALUES (?1, ?2, ?3, ?4)",
             params![terminal_id, label, started_at, log_path],
@@ -284,18 +316,22 @@ impl Database {
             .prepare("SELECT id, terminal_id, label, started_at, ended_at, log_path FROM session_history ORDER BY started_at DESC LIMIT 100")
             .map_err(|e| e.to_string())?;
 
-        let entries = stmt.query_map([], |row| {
-            Ok(SessionHistoryEntry {
-                id: row.get(0)?,
-                terminal_id: row.get(1)?,
-                label: row.get(2)?,
-                started_at: row.get(3)?,
-                ended_at: row.get(4)?,
-                log_path: row.get(5)?,
+        let entries = stmt
+            .query_map([], |row| {
+                Ok(SessionHistoryEntry {
+                    id: row.get(0)?,
+                    terminal_id: row.get(1)?,
+                    label: row.get(2)?,
+                    started_at: row.get(3)?,
+                    ended_at: row.get(4)?,
+                    log_path: row.get(5)?,
+                })
             })
-        }).map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?;
 
-        entries.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+        entries
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
     }
 
     pub fn get_log_path_for_terminal(&self, terminal_id: &str) -> Result<Option<String>, String> {
@@ -312,7 +348,8 @@ impl Database {
     }
 
     pub fn delete_session_history_entry(&self, id: i64) -> Result<(), String> {
-        self.conn.execute("DELETE FROM session_history WHERE id = ?1", params![id])
+        self.conn
+            .execute("DELETE FROM session_history WHERE id = ?1", params![id])
             .map_err(|e| e.to_string())?;
         Ok(())
     }
@@ -333,21 +370,26 @@ impl Database {
             .prepare("SELECT id, title, content, category, created_at FROM snippets ORDER BY created_at DESC")
             .map_err(|e| e.to_string())?;
 
-        let snippets = stmt.query_map([], |row| {
-            Ok(Snippet {
-                id: row.get(0)?,
-                title: row.get(1)?,
-                content: row.get(2)?,
-                category: row.get(3)?,
-                created_at: row.get(4)?,
+        let snippets = stmt
+            .query_map([], |row| {
+                Ok(Snippet {
+                    id: row.get(0)?,
+                    title: row.get(1)?,
+                    content: row.get(2)?,
+                    category: row.get(3)?,
+                    created_at: row.get(4)?,
+                })
             })
-        }).map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?;
 
-        snippets.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+        snippets
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
     }
 
     pub fn delete_snippet(&self, id: &str) -> Result<(), String> {
-        self.conn.execute("DELETE FROM snippets WHERE id = ?1", params![id])
+        self.conn
+            .execute("DELETE FROM snippets WHERE id = ?1", params![id])
             .map_err(|e| e.to_string())?;
         Ok(())
     }
@@ -373,7 +415,13 @@ impl Database {
         }
     }
 
-    pub fn save_layout_template(&self, id: &str, name: &str, layout: &str, terminal_configs: &str) -> Result<(), String> {
+    pub fn save_layout_template(
+        &self,
+        id: &str,
+        name: &str,
+        layout: &str,
+        terminal_configs: &str,
+    ) -> Result<(), String> {
         if name.is_empty() || name.len() > 255 {
             return Err("Template name must be 1-255 characters".to_string());
         }
@@ -389,17 +437,21 @@ impl Database {
             .prepare("SELECT id, name, layout, terminal_configs, created_at FROM layout_templates ORDER BY created_at DESC")
             .map_err(|e| e.to_string())?;
 
-        let templates = stmt.query_map([], |row| {
-            Ok(LayoutTemplate {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                layout: row.get(2)?,
-                terminal_configs: row.get(3)?,
-                created_at: row.get(4)?,
+        let templates = stmt
+            .query_map([], |row| {
+                Ok(LayoutTemplate {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    layout: row.get(2)?,
+                    terminal_configs: row.get(3)?,
+                    created_at: row.get(4)?,
+                })
             })
-        }).map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?;
 
-        templates.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+        templates
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
     }
 
     pub fn load_layout_template(&self, id: &str) -> Result<LayoutTemplate, String> {
@@ -417,7 +469,8 @@ impl Database {
     }
 
     pub fn delete_layout_template(&self, id: &str) -> Result<(), String> {
-        self.conn.execute("DELETE FROM layout_templates WHERE id = ?1", params![id])
+        self.conn
+            .execute("DELETE FROM layout_templates WHERE id = ?1", params![id])
             .map_err(|e| e.to_string())?;
         Ok(())
     }
@@ -432,10 +485,12 @@ impl Database {
             Ok(id) => Ok(id),
             Err(rusqlite::Error::QueryReturnedNoRows) => {
                 let id = uuid::Uuid::new_v4().to_string();
-                self.conn.execute(
-                    "INSERT INTO app_meta (key, value) VALUES ('installation_id', ?1)",
-                    params![id],
-                ).map_err(|e| e.to_string())?;
+                self.conn
+                    .execute(
+                        "INSERT INTO app_meta (key, value) VALUES ('installation_id', ?1)",
+                        params![id],
+                    )
+                    .map_err(|e| e.to_string())?;
                 Ok(id)
             }
             Err(e) => Err(e.to_string()),

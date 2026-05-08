@@ -230,18 +230,14 @@ fn redact(text: &str) -> String {
 }
 
 fn strip_ansi_for_export(text: &str) -> String {
-    let re = regex::Regex::new(
-        r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\x1b\[.*?[A-Za-z]",
-    )
-    .unwrap();
+    let re = regex::Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\x1b\[.*?[A-Za-z]").unwrap();
     re.replace_all(text, "").into_owned()
 }
 
 fn read_and_clean_log(log_path: &str) -> Result<String, String> {
     let canonical_path = canonical_in_logs(log_path)?;
     const MAX_BYTES: usize = 2 * 1024 * 1024;
-    let bytes = std::fs::read(&canonical_path)
-        .map_err(|e| format!("Failed to read log: {e}"))?;
+    let bytes = std::fs::read(&canonical_path).map_err(|e| format!("Failed to read log: {e}"))?;
     let slice = if bytes.len() > MAX_BYTES {
         &bytes[bytes.len() - MAX_BYTES..]
     } else {
@@ -306,13 +302,18 @@ pub async fn export_session(
                 let tmp_dir = std::env::temp_dir();
                 let safe_label: String = label
                     .chars()
-                    .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+                    .map(|c| {
+                        if c.is_alphanumeric() || c == '-' || c == '_' {
+                            c
+                        } else {
+                            '_'
+                        }
+                    })
                     .take(60)
                     .collect();
                 let filename = format!("{safe_label}.md");
                 let tmp_path = tmp_dir.join(&filename);
-                let md =
-                    format!("# Session: {label}\nDate: {started_at}\n\n```\n{clean}\n```\n");
+                let md = format!("# Session: {label}\nDate: {started_at}\n\n```\n{clean}\n```\n");
                 std::fs::write(&tmp_path, &md)
                     .map_err(|e| format!("Failed to write temp file: {e}"))?;
 
@@ -375,10 +376,8 @@ pub async fn search_session_history(
             db.get_session_history()?
         };
 
-        let ansi_re = regex::Regex::new(
-            r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\x1b\[.*?[A-Za-z]",
-        )
-        .unwrap();
+        let ansi_re =
+            regex::Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\x1b\[.*?[A-Za-z]").unwrap();
 
         // Single canonical source for the logs directory (Issue #64)
         let canonical_logs = canonical_logs_dir().ok();
@@ -408,9 +407,7 @@ pub async fn search_session_history(
 
             if let Some(ref log_path) = entry.log_path {
                 if let Some(ref canonical_logs) = canonical_logs {
-                    if let Ok(canonical_path) =
-                        std::path::Path::new(log_path).canonicalize()
-                    {
+                    if let Ok(canonical_path) = std::path::Path::new(log_path).canonicalize() {
                         if canonical_path.starts_with(canonical_logs) {
                             if let Ok(bytes) = std::fs::read(&canonical_path) {
                                 const MAX_BYTES: usize = 200 * 1024;

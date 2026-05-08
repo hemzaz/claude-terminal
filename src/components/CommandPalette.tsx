@@ -5,7 +5,8 @@ import { reportError } from '../lib/reportError';
 import { useAppStore } from '../store/appStore';
 import type { FileTabState, ModalKind } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
-import type { TerminalConfig, ClosedTerminalRecord } from '../store/terminalStore';
+import type { ClosedTerminalRecord } from '../store/terminalStore';
+import type { ConfigProfile, SessionHistoryEntry, TerminalConfig } from '../types/ipc';
 import {
   Terminal,
   Settings,
@@ -43,26 +44,6 @@ interface Snippet {
   content: string;
   category: string;
   created_at: string;
-}
-
-interface ConfigProfile {
-  id: string;
-  name: string;
-  description: string | null;
-  working_directory: string;
-  claude_args: string[];
-  env_vars: Record<string, string>;
-  is_default: boolean;
-  last_used_at: string | null;
-}
-
-interface SessionHistoryEntry {
-  id: number;
-  terminal_id: string;
-  label: string;
-  started_at: string;
-  ended_at: string | null;
-  log_path: string | null;
 }
 
 interface PaletteItem {

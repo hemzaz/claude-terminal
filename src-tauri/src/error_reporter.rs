@@ -22,8 +22,7 @@ pub fn scrub(input: &str) -> String {
     // Match `C:\Users\<username>` where the username portion ends at the next path
     // separator, whitespace, or shell metacharacter. The terminator is NOT consumed,
     // so a trailing backslash, apostrophe, etc. remains intact in the output.
-    let win = WIN_USER
-        .get_or_init(|| regex::Regex::new(r#"C:\\Users\\[^\\/\s'"<>|*?]+"#).unwrap());
+    let win = WIN_USER.get_or_init(|| regex::Regex::new(r#"C:\\Users\\[^\\/\s'"<>|*?]+"#).unwrap());
     let uri = FILE_URI_USER
         .get_or_init(|| regex::Regex::new(r#"file:///C:/Users/[^/\s'"<>|*?]+"#).unwrap());
     let step1 = win.replace_all(input, r"C:\Users\<user>");
@@ -59,12 +58,12 @@ pub fn fingerprint(
     out
 }
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::OnceLock;
-use std::collections::HashMap;
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
 use serde::Serialize;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
+use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 
 const WORKER_URL: &str = "https://ct-analytics.claude-terminal.workers.dev";
 const INGEST_TOKEN: Option<&str> = option_env!("CT_INGEST_TOKEN");
@@ -92,7 +91,9 @@ pub struct Dedup {
 
 impl Dedup {
     pub fn new() -> Self {
-        Self { map: Mutex::new(HashMap::new()) }
+        Self {
+            map: Mutex::new(HashMap::new()),
+        }
     }
 
     pub fn should_send(&self, fp: &str, now: Instant) -> bool {
@@ -160,7 +161,12 @@ pub async fn report(
 
     let scrubbed_message = clamp(scrub(&message), MESSAGE_MAX);
     let scrubbed_stack = stack.map(|s| clamp(scrub(&s), STACK_MAX));
-    let fp = fingerprint(source, kind.as_deref(), &scrubbed_message, scrubbed_stack.as_deref());
+    let fp = fingerprint(
+        source,
+        kind.as_deref(),
+        &scrubbed_message,
+        scrubbed_stack.as_deref(),
+    );
 
     if !state.dedup.should_send(&fp, Instant::now()) {
         return;
@@ -316,8 +322,18 @@ mod tests {
 
     #[test]
     fn fingerprint_is_stable_for_identical_inputs() {
-        let a = fingerprint(ErrorSource::RustPanic, Some("PtyOpenError"), "boom", Some("at foo\nat bar"));
-        let b = fingerprint(ErrorSource::RustPanic, Some("PtyOpenError"), "boom", Some("at foo\nat bar"));
+        let a = fingerprint(
+            ErrorSource::RustPanic,
+            Some("PtyOpenError"),
+            "boom",
+            Some("at foo\nat bar"),
+        );
+        let b = fingerprint(
+            ErrorSource::RustPanic,
+            Some("PtyOpenError"),
+            "boom",
+            Some("at foo\nat bar"),
+        );
         assert_eq!(a, b);
         assert_eq!(a.len(), 16);
     }

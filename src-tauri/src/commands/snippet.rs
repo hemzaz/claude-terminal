@@ -5,10 +5,7 @@ use tauri::{command, State};
 use super::shared::wrap_cmd;
 
 #[command]
-pub async fn save_snippet(
-    state: State<'_, AppState>,
-    snippet: Snippet,
-) -> Result<(), String> {
+pub async fn save_snippet(state: State<'_, AppState>, snippet: Snippet) -> Result<(), String> {
     wrap_cmd("save_snippet", async move {
         let db = state.db.lock().await;
         db.save_snippet(&snippet)

@@ -5,17 +5,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
+import type { ConfigProfile } from '../types/ipc';
 import { v4 as uuidv4 } from 'uuid';
-
-interface ConfigProfile {
-  id: string;
-  name: string;
-  description: string | null;
-  working_directory: string;
-  claude_args: string[];
-  env_vars: Record<string, string>;
-  is_default: boolean;
-}
 
 export function ProfileModal() {
   const { closeModal, editingProfileId } = useAppStore();

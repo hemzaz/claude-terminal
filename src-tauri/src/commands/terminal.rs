@@ -32,10 +32,11 @@ pub async fn create_terminal(
         let (tx, mut rx) = mpsc::channel::<(String, Vec<u8>)>(1000);
 
         let log_path = {
-            let data_dir = directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
-                .ok_or("Failed to get project directories")?
-                .data_dir()
-                .to_path_buf();
+            let data_dir =
+                directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
+                    .ok_or("Failed to get project directories")?
+                    .data_dir()
+                    .to_path_buf();
             let logs_dir = data_dir.join("logs");
             std::fs::create_dir_all(&logs_dir).map_err(|e| e.to_string())?;
             let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
@@ -76,10 +77,13 @@ pub async fn create_terminal(
         let app_clone = app.clone();
         tokio::spawn(async move {
             while let Some((id, data)) = rx.recv().await {
-                if let Err(e) = app_clone.emit("terminal-output", serde_json::json!({
-                    "id": id,
-                    "data": data,
-                })) {
+                if let Err(e) = app_clone.emit(
+                    "terminal-output",
+                    serde_json::json!({
+                        "id": id,
+                        "data": data,
+                    }),
+                ) {
                     eprintln!("Failed to emit terminal-output: {}", e);
                     break;
                 }
@@ -88,23 +92,29 @@ pub async fn create_terminal(
             // Terminal process exited — update status, session history, and notify frontend
             // Note: the terminal may have already been removed by close_terminal(), so ignore errors
             {
-                if let Ok(mut manager) = tokio::time::timeout(
-                    std::time::Duration::from_secs(2),
-                    terminals_arc.lock(),
-                ).await {
-                    let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
+                if let Ok(mut manager) =
+                    tokio::time::timeout(std::time::Duration::from_secs(2), terminals_arc.lock())
+                        .await
+                {
+                    let _ = manager
+                        .update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
                 }
             }
             {
                 let db = db_arc.lock().await;
-                if let Err(e) = db.update_session_ended(&terminal_id, &chrono::Utc::now().to_rfc3339()) {
+                if let Err(e) =
+                    db.update_session_ended(&terminal_id, &chrono::Utc::now().to_rfc3339())
+                {
                     eprintln!("Failed to update session ended for {}: {}", terminal_id, e);
                 }
             }
 
-            if let Err(e) = app_clone.emit("terminal-finished", serde_json::json!({
-                "id": terminal_id,
-            })) {
+            if let Err(e) = app_clone.emit(
+                "terminal-finished",
+                serde_json::json!({
+                    "id": terminal_id,
+                }),
+            ) {
                 eprintln!("Failed to emit terminal-finished: {}", e);
             }
         });
@@ -243,21 +253,27 @@ pub async fn create_script_terminal(
         let app_clone = app.clone();
         tokio::spawn(async move {
             while let Some((id, data)) = rx.recv().await {
-                if let Err(e) = app_clone.emit("terminal-output", serde_json::json!({
-                    "id": id,
-                    "data": data,
-                })) {
+                if let Err(e) = app_clone.emit(
+                    "terminal-output",
+                    serde_json::json!({
+                        "id": id,
+                        "data": data,
+                    }),
+                ) {
                     eprintln!("Failed to emit terminal-output: {}", e);
                     break;
                 }
             }
-            if let Ok(mut manager) = tokio::time::timeout(
-                std::time::Duration::from_secs(2),
-                terminals_arc.lock(),
-            ).await {
-                let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
+            if let Ok(mut manager) =
+                tokio::time::timeout(std::time::Duration::from_secs(2), terminals_arc.lock()).await
+            {
+                let _ =
+                    manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
             }
-            if let Err(e) = app_clone.emit("terminal-finished", serde_json::json!({ "id": terminal_id })) {
+            if let Err(e) = app_clone.emit(
+                "terminal-finished",
+                serde_json::json!({ "id": terminal_id }),
+            ) {
                 eprintln!("Failed to emit terminal-finished: {}", e);
             }
         });
@@ -289,21 +305,27 @@ pub async fn create_shell_terminal(
         let app_clone = app.clone();
         tokio::spawn(async move {
             while let Some((id, data)) = rx.recv().await {
-                if let Err(e) = app_clone.emit("terminal-output", serde_json::json!({
-                    "id": id,
-                    "data": data,
-                })) {
+                if let Err(e) = app_clone.emit(
+                    "terminal-output",
+                    serde_json::json!({
+                        "id": id,
+                        "data": data,
+                    }),
+                ) {
                     eprintln!("Failed to emit terminal-output: {}", e);
                     break;
                 }
             }
-            if let Ok(mut manager) = tokio::time::timeout(
-                std::time::Duration::from_secs(2),
-                terminals_arc.lock(),
-            ).await {
-                let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
+            if let Ok(mut manager) =
+                tokio::time::timeout(std::time::Duration::from_secs(2), terminals_arc.lock()).await
+            {
+                let _ =
+                    manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
             }
-            if let Err(e) = app_clone.emit("terminal-finished", serde_json::json!({ "id": terminal_id })) {
+            if let Err(e) = app_clone.emit(
+                "terminal-finished",
+                serde_json::json!({ "id": terminal_id }),
+            ) {
                 eprintln!("Failed to emit terminal-finished: {}", e);
             }
         });

@@ -87,9 +87,12 @@ pub async fn check_claude_update() -> Result<UpdateCheckResult, String> {
 #[command]
 pub async fn update_claude_code() -> Result<String, String> {
     wrap_cmd("update_claude_code", async move {
-        let output = shell_command("npm", &["install", "-g", "@anthropic-ai/claude-code@latest"])
-            .output()
-            .map_err(|e| format!("Failed to run npm: {}", e))?;
+        let output = shell_command(
+            "npm",
+            &["install", "-g", "@anthropic-ai/claude-code@latest"],
+        )
+        .output()
+        .map_err(|e| format!("Failed to run npm: {}", e))?;
 
         if output.status.success() {
             Ok("Claude Code updated successfully!".to_string())
@@ -237,9 +240,7 @@ fn get_macos_bundle_path() -> Result<std::path::PathBuf, String> {
         match path.parent() {
             Some(parent) => path = parent,
             None => {
-                return Err(
-                    "Could not locate .app bundle — quarantine check skipped".to_string(),
-                )
+                return Err("Could not locate .app bundle — quarantine check skipped".to_string())
             }
         }
     }

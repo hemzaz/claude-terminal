@@ -1,5 +1,5 @@
-use crate::AppState;
 use crate::error_reporter::{self, ErrorSource};
+use crate::AppState;
 use std::future::Future;
 use std::path::PathBuf;
 use tauri::State;
@@ -198,7 +198,10 @@ mod tests {
         let result = app_logs_dir();
         assert!(result.is_ok(), "app_logs_dir should succeed: {:?}", result);
         let dir = result.unwrap();
-        assert!(dir.exists(), "logs directory must exist after app_logs_dir()");
+        assert!(
+            dir.exists(),
+            "logs directory must exist after app_logs_dir()"
+        );
         assert!(dir.is_dir(), "logs path must be a directory");
     }
 
@@ -211,7 +214,11 @@ mod tests {
 
         let result = canonical_in_logs(test_file.to_str().unwrap());
         let _ = fs::remove_file(&test_file); // clean up regardless
-        assert!(result.is_ok(), "file inside logs dir must be accepted: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "file inside logs dir must be accepted: {:?}",
+            result
+        );
     }
 
     #[test]

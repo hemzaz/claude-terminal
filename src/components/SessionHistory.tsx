@@ -3,15 +3,7 @@ import { motion } from 'framer-motion';
 import { X, Trash2, Clock, FileText, Download, Loader2, Check } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
-
-interface SessionHistoryEntry {
-  id: number;
-  terminal_id: string;
-  label: string;
-  started_at: string;
-  ended_at: string | null;
-  log_path: string | null;
-}
+import type { SessionHistoryEntry } from '../types/ipc';
 
 interface ContextMenuState {
   entry: SessionHistoryEntry;

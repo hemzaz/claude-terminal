@@ -26,7 +26,10 @@ pub async fn send_telemetry_heartbeat(
             let db = state.db.lock().await;
             db.get_or_create_installation_id()?
         };
-        tokio::spawn(crate::telemetry::send_heartbeat(installation_id, app_version));
+        tokio::spawn(crate::telemetry::send_heartbeat(
+            installation_id,
+            app_version,
+        ));
         Ok(())
     })
     .await

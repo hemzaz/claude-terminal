@@ -93,6 +93,7 @@ export function WorktreeModal() {
         worktreePath: newWorktreePath,
         branch: newBranchName,
         createBranch: !branchExists,
+        baseRef: !branchExists ? baseBranch || null : null,
       });
       setShowNewForm(false);
       setNewBranchName('');
