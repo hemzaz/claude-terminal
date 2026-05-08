@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle, XCircle, Download, ExternalLink, Loader2, Terminal, Box, RefreshCw, AlertTriangle, ShieldOff } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
+import { OnboardingTour } from './OnboardingTour';
 
 interface SystemStatus {
   node_installed: boolean;
@@ -25,9 +26,10 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   const [isQuarantined, setIsQuarantined] = useState(false);
   const [isFixingQuarantine, setIsFixingQuarantine] = useState(false);
   const [quarantineError, setQuarantineError] = useState<string | null>(null);
+  const [showTour, setShowTour] = useState(false);
 
   const mountedRef = useRef(true);
-  const { notifyOnFinish } = useAppStore();
+  const { notifyOnFinish, onboardingCompleted } = useAppStore();
 
   // Warm up macOS notification permission by sending a welcome notification on
   // first completion. The user sees it in context (just finished setup) rather
@@ -43,8 +45,9 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
         // Non-fatal: proceed to app even if notification fails.
       }
     }
+    if (!onboardingCompleted) setShowTour(true);
     onComplete();
-  }, [notifyOnFinish, onComplete]);
+  }, [notifyOnFinish, onComplete, onboardingCompleted]);
 
   const checkQuarantine = async () => {
     try {
@@ -138,6 +141,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   const allInstalled = status?.node_installed && status?.npm_installed && status?.claude_installed;
 
   return (
+    <>
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -302,5 +306,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
         </div>
       </div>
     </motion.div>
+    {showTour && <OnboardingTour onDismiss={() => setShowTour(false)} />}
+    </>
   );
 }
