@@ -45,6 +45,26 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    use tauri_plugin_global_shortcut::ShortcutState;
+                    if event.state() == ShortcutState::Pressed {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let visible = window.is_visible().unwrap_or(false);
+                            let focused = window.is_focused().unwrap_or(false);
+                            if visible && focused {
+                                let _ = window.hide();
+                            } else {
+                                let _ = window.show();
+                                let _ = window.unminimize();
+                                let _ = window.set_focus();
+                            }
+                        }
+                    }
+                })
+                .build(),
+        )
         .setup(|app| {
             let db = database::Database::new()?;
             let installation_id = db.get_or_create_installation_id().unwrap_or_default();
@@ -197,6 +217,7 @@ fn main() {
             commands::system::send_notification,
             commands::system::check_quarantine,
             commands::system::remove_quarantine,
+            commands::system::set_global_hotkey,
             // workspace
             commands::workspace::get_workspaces,
             commands::workspace::delete_workspace,
@@ -241,6 +262,7 @@ fn main() {
             commands::session::summarize_session,
             commands::session::save_session_summary,
             commands::session::get_session_summary,
+            commands::session::export_session,
             // snippet
             commands::snippet::save_snippet,
             commands::snippet::get_snippets,
