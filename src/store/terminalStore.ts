@@ -14,6 +14,7 @@ export interface TerminalConfig {
   created_at: string;
   status: 'Running' | 'Idle' | 'Error' | 'Stopped';
   color_tag: string | null;
+  pinned: boolean;
 }
 
 export interface LoopInfo {
@@ -65,6 +66,7 @@ interface TerminalState {
   setActiveTerminal: (id: string) => void;
   updateLabel: (id: string, label: string) => Promise<void>;
   updateNickname: (id: string, nickname: string) => Promise<void>;
+  setPinned: (id: string, pinned: boolean) => Promise<void>;
   writeToTerminal: (id: string, data: string) => Promise<void>;
   resizeTerminal: (id: string, cols: number, rows: number) => Promise<void>;
   setXterm: (id: string, xterm: Terminal) => void;
@@ -259,6 +261,19 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       const instance = newTerminals.get(id);
       if (instance) {
         instance.config.nickname = nickname;
+      }
+      return { terminals: newTerminals };
+    });
+  },
+
+  setPinned: async (id, pinned) => {
+    await invoke('set_terminal_pinned', { id, pinned });
+
+    set((state) => {
+      const newTerminals = new Map(state.terminals);
+      const instance = newTerminals.get(id);
+      if (instance) {
+        instance.config.pinned = pinned;
       }
       return { terminals: newTerminals };
     });

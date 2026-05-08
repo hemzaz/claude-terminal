@@ -20,6 +20,8 @@ pub struct TerminalConfig {
     pub created_at: DateTime<Utc>,
     pub status: TerminalStatus,
     pub color_tag: Option<String>,
+    #[serde(default)]
+    pub pinned: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -189,6 +191,7 @@ impl TerminalManager {
             created_at: Utc::now(),
             status: TerminalStatus::Running,
             color_tag,
+            pinned: false,
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -337,6 +340,7 @@ impl TerminalManager {
             created_at: Utc::now(),
             status: TerminalStatus::Running,
             color_tag: None,
+            pinned: false,
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -449,6 +453,7 @@ impl TerminalManager {
             created_at: Utc::now(),
             status: TerminalStatus::Running,
             color_tag: None,
+            pinned: false,
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -623,6 +628,15 @@ impl TerminalManager {
     pub fn update_nickname(&mut self, id: &str, nickname: String) -> Result<(), String> {
         if let Some(terminal) = self.terminals.get_mut(id) {
             terminal.config.nickname = Some(nickname);
+            Ok(())
+        } else {
+            Err("Terminal not found".to_string())
+        }
+    }
+
+    pub fn update_pinned(&mut self, id: &str, pinned: bool) -> Result<(), String> {
+        if let Some(terminal) = self.terminals.get_mut(id) {
+            terminal.config.pinned = pinned;
             Ok(())
         } else {
             Err("Terminal not found".to_string())

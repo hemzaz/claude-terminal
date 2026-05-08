@@ -89,10 +89,11 @@ interface SavedTerminalConfig {
   claude_args: string[];
   env_vars: Record<string, string>;
   color_tag: string | null;
+  pinned?: boolean;
 }
 
 function App() {
-  const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, orchestrationOpen, activeModal, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openModal } = useAppStore();
+  const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, orchestrationOpen, activeModal, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openModal, seenUpdateSourceToast, setSeenUpdateSourceToast } = useAppStore();
   const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal } = useTerminalStore();
   const [showSetup, setShowSetup] = useState<boolean | null>(null);
   const { notify } = useNotification();
@@ -132,6 +133,21 @@ function App() {
 
     checkWhatsNew();
   }, [showSetup, lastSeenVersion, setLastSeenVersion, openModal]);
+
+  // First-launch macOS hint: surface the update-source toggle (Homebrew vs in-app).
+  // Only fires once; seenUpdateSourceToast is persisted so it survives restarts.
+  useEffect(() => {
+    if (showSetup !== false) return;
+    const isMac = navigator.platform.toUpperCase().includes('MAC');
+    if (!isMac || seenUpdateSourceToast) return;
+    setSeenUpdateSourceToast(true);
+    toast.info(
+      'macOS Update Source',
+      'Updates use Homebrew by default. Tap to change in Settings.',
+      0, // indefinite — user must dismiss
+      () => openModal('settings'),
+    );
+  }, [showSetup, seenUpdateSourceToast, setSeenUpdateSourceToast, openModal]);
 
   // Push the persisted error-reporting preference to Rust on mount.
   // The Rust flag defaults to false, so until this fires no panics are reported.
@@ -258,17 +274,39 @@ function App() {
     return () => { unlisten.then(fn => fn()); };
   }, []);
 
-  // Restore previous session on startup — show banner instead of silently restoring
+  // Restore previous session on startup.
+  // - restoreSession=true: show restore banner for all saved tabs.
+  // - restoreSession=false: silently reopen only pinned tabs.
   useEffect(() => {
     if (showSetup !== false) return;
-    if (!restoreSession) return;
 
     const checkLastSession = async () => {
       try {
         const configs = await invoke<SavedTerminalConfig[] | null>('get_last_session');
         if (!configs || configs.length === 0) return;
-        setPendingRestoreConfigs(configs);
-        setShowRestoreBanner(true);
+
+        if (restoreSession) {
+          setPendingRestoreConfigs(configs);
+          setShowRestoreBanner(true);
+        } else {
+          // Silently restore pinned tabs regardless of restoreSession setting
+          const pinned = configs.filter((c) => c.pinned);
+          if (pinned.length === 0) return;
+          for (const config of pinned) {
+            try {
+              await createTerminal(
+                config.label,
+                config.working_directory,
+                config.claude_args,
+                config.env_vars,
+                config.color_tag ?? undefined,
+                config.nickname ?? undefined,
+              );
+            } catch (err) {
+              console.error('Failed to restore pinned terminal:', config.label, err);
+            }
+          }
+        }
       } catch (err) {
         console.error('Failed to check last session:', err);
       }

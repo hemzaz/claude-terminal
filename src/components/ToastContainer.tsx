@@ -38,12 +38,13 @@ const COLOR_MAP: Record<ToastType, { icon: string; bar: string; tint: string; ri
   },
 };
 
-function ToastItem({ id, type, title, message, duration }: {
+function ToastItem({ id, type, title, message, duration, onClick }: {
   id: string;
   type: ToastType;
   title: string;
   message?: string;
   duration: number;
+  onClick?: () => void;
 }) {
   const removeToast = useToastStore((s) => s.removeToast);
   const progressRef = useRef<HTMLDivElement>(null);
@@ -75,7 +76,10 @@ function ToastItem({ id, type, title, message, duration }: {
       <div className={`absolute left-0 top-0 bottom-0 w-[3px] ${colors.bar}`} />
 
       {/* Content */}
-      <div className="relative flex items-start gap-2.5 px-3 py-2.5 pl-4">
+      <div
+        className={`relative flex items-start gap-2.5 px-3 py-2.5 pl-4 ${onClick ? 'cursor-pointer' : ''}`}
+        onClick={onClick ? () => { onClick(); removeToast(id); } : undefined}
+      >
         <Icon size={16} className={`${colors.icon} mt-0.5 shrink-0`} />
         <div className="flex-1 min-w-0">
           <p className="text-text-primary text-[12px] font-medium leading-tight">
@@ -88,7 +92,7 @@ function ToastItem({ id, type, title, message, duration }: {
           )}
         </div>
         <button
-          onClick={() => removeToast(id)}
+          onClick={(e) => { e.stopPropagation(); removeToast(id); }}
           className="text-text-tertiary hover:text-text-secondary transition-colors shrink-0 mt-0.5"
         >
           <X size={13} />

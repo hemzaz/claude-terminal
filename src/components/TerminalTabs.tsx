@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { Reorder } from 'framer-motion';
-import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight, Copy, File as FileIcon, AlertTriangle, Minimize2 } from 'lucide-react';
+import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight, Copy, File as FileIcon, AlertTriangle, Minimize2, Pin } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { TerminalView } from './TerminalView';
@@ -22,7 +22,7 @@ function fileBasename(p: string): string {
 
 
 export function TerminalTabs() {
-  const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, unreadTerminalIds, gitInfoCache, reorderTerminals, scriptChildren, closeScript, writeToTerminal } = useTerminalStore();
+  const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, unreadTerminalIds, gitInfoCache, reorderTerminals, scriptChildren, closeScript, writeToTerminal, setPinned } = useTerminalStore();
   const { openModal, gridMode, toggleGridMode, addToGrid, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, setSplitTerminals, setSplitMode, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree } = useAppStore();
 
   // Selecting a terminal clears the file-tab focus (so terminal view shows),
@@ -42,9 +42,29 @@ export function TerminalTabs() {
     () =>
       Array.from(terminals.values())
         .filter((t) => !t.scriptParentId && !t.isShellTerminal)
-        .map((t) => t.config),
+        .map((t) => t.config)
+        .sort((a, b) => {
+          // Pinned tabs always come first; within each group preserve insertion order
+          if (a.pinned === b.pinned) return 0;
+          return a.pinned ? -1 : 1;
+        }),
     [terminals]
   );
+
+  // Right-click context menu state
+  const [contextMenu, setContextMenu] = useState<{ terminalId: string; x: number; y: number } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        setContextMenu(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [contextMenu]);
 
   const handleNewTab = () => {
     openModal('newTerminal');
@@ -227,6 +247,10 @@ export function TerminalTabs() {
                       closeTerminal(terminal.id);
                     }
                   }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setContextMenu({ terminalId: terminal.id, x: e.clientX, y: e.clientY });
+                  }}
                   onDragOver={(e) => handleTabDragOver(e, terminal.id)}
                   onDragLeave={handleTabDragLeave}
                   onDrop={(e) => handleTabDrop(e, terminal.id)}
@@ -264,6 +288,9 @@ export function TerminalTabs() {
                   )}
                   {terminal.color_tag && (
                     <div className={`w-2 h-2 rounded-full ${terminal.color_tag} flex-shrink-0`} />
+                  )}
+                  {terminal.pinned && (
+                    <Pin size={10} className="text-accent-primary flex-shrink-0" strokeWidth={2} />
                   )}
                   {/* Badges */}
                   {model && (
@@ -533,6 +560,30 @@ export function TerminalTabs() {
       </div>
 
       <BottomTerminalPane />
+
+      {/* Right-click context menu for tabs */}
+      {contextMenu && (() => {
+        const inst = terminals.get(contextMenu.terminalId);
+        const isPinned = inst?.config.pinned ?? false;
+        return (
+          <div
+            ref={contextMenuRef}
+            style={{ position: 'fixed', top: contextMenu.y, left: contextMenu.x, zIndex: 9999 }}
+            className="bg-elevation-2 border border-[var(--ij-divider)] rounded-[6px] shadow-xl py-1 min-w-[160px]"
+          >
+            <button
+              onClick={() => {
+                void setPinned(contextMenu.terminalId, !isPinned);
+                setContextMenu(null);
+              }}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-white/[0.06] transition-colors"
+            >
+              <Pin size={12} strokeWidth={1.75} className={isPinned ? 'text-accent-primary' : 'text-text-tertiary'} />
+              {isPinned ? 'Unpin tab' : 'Pin tab'}
+            </button>
+          </div>
+        );
+      })()}
     </div>
   );
 }
