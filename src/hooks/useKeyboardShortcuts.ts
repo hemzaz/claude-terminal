@@ -61,10 +61,10 @@ export function useKeyboardShortcuts() {
         return;
       }
 
-      // Cmd+Shift+T (macOS): reopen most-recently-closed terminal.
-      // TODO: implement once Issue #15 (soft-delete closed terminals) ships.
-      if (isMac && meta && shift && e.key === 'T') {
+      // Cmd+Shift+T (macOS) / Ctrl+Shift+T (Windows/Linux): reopen most-recently-closed terminal.
+      if ((isMac && meta && shift && e.key === 'T') || (!isMac && ctrl && shift && e.key === 'T')) {
         e.preventDefault();
+        useTerminalStore.getState().reopenTerminal();
         return;
       }
 
