@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { reportError } from '../lib/reportError';
 import { TerminalSquare, Code2, Clock, Layers, Sparkles, ArrowRight } from 'lucide-react';
 import appIconUrl from '../assets/app-icon.png';
 import { useAppStore } from '../store/appStore';
@@ -19,10 +20,10 @@ export function WelcomePanel() {
   useEffect(() => {
     invoke<{ id: number }[]>('get_session_history')
       .then((entries) => setHasHistory(entries.length > 0))
-      .catch(() => {});
+      .catch(reportError('get_session_history'));
     invoke<{ id: string }[]>('get_profiles')
       .then((profiles) => setHasProfiles(profiles.length > 0))
-      .catch(() => {});
+      .catch(reportError('get_profiles'));
   }, []);
 
   const cards: WelcomeCard[] = [

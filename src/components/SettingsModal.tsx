@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { X, Download, RefreshCw, CheckCircle, AlertCircle, ExternalLink, Check, Rocket, Bell, Keyboard } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
+import { reportError } from '../lib/reportError';
 import { useAppStore } from '../store/appStore';
 import { useUpdaterStore } from '../store/updaterStore';
 import { toast } from '../store/toastStore';
@@ -59,7 +60,7 @@ export function SettingsModal() {
     parts.push(e.code);
     const shortcut = parts.join('+');
     setGlobalHotkey(shortcut);
-    invoke('set_global_hotkey', { shortcut }).catch(() => {});
+    invoke('set_global_hotkey', { shortcut }).catch(reportError('set-global-hotkey'));
     setIsRecording(false);
   };
 
@@ -592,7 +593,7 @@ export function SettingsModal() {
                   onClick={() => {
                     const next = !errorReportingEnabled;
                     setErrorReportingEnabled(next);
-                    invoke('set_error_reporting_enabled', { enabled: next }).catch(() => {});
+                    invoke('set_error_reporting_enabled', { enabled: next }).catch(reportError('set-error-reporting-enabled'));
                   }}
                   className={`relative w-10 h-5 rounded-full transition-colors ${
                     errorReportingEnabled ? 'bg-accent-primary' : 'bg-border-light'
@@ -642,7 +643,7 @@ export function SettingsModal() {
                   <button
                     onClick={() => {
                       setGlobalHotkey('');
-                      invoke('set_global_hotkey', { shortcut: '' }).catch(() => {});
+                      invoke('set_global_hotkey', { shortcut: '' }).catch(reportError('clear-global-hotkey'));
                     }}
                     className="h-9 px-3 rounded-md ring-1 ring-border-light bg-bg-elevated hover:bg-white/[0.04] text-text-secondary hover:text-text-primary text-[12px] transition-colors"
                   >
