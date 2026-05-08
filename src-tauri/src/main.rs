@@ -201,6 +201,11 @@ fn main() {
             commands::terminal::set_terminal_pinned,
             commands::terminal::create_script_terminal,
             commands::terminal::create_shell_terminal,
+            // layout templates
+            commands::layout::save_layout_template,
+            commands::layout::list_layout_templates,
+            commands::layout::load_layout_template,
+            commands::layout::delete_layout_template,
             // profile
             commands::profile::save_profile,
             commands::profile::get_profiles,

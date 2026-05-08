@@ -5,6 +5,15 @@ use directories::ProjectDirs;
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LayoutTemplate {
+    pub id: String,
+    pub name: String,
+    pub layout: String,
+    pub terminal_configs: String, // JSON-serialized slot array
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SessionHistoryEntry {
     pub id: i64,
     pub terminal_id: String,
@@ -94,6 +103,14 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_workspaces_name ON workspaces(name);
             CREATE INDEX IF NOT EXISTS idx_session_history_terminal_id ON session_history(terminal_id);
             CREATE INDEX IF NOT EXISTS idx_snippets_category ON snippets(category);
+
+            CREATE TABLE IF NOT EXISTS layout_templates (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                layout TEXT NOT NULL,
+                terminal_configs TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
 
             CREATE TABLE IF NOT EXISTS app_meta (
                 key TEXT PRIMARY KEY,
@@ -362,6 +379,57 @@ impl Database {
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(e.to_string()),
         }
+    }
+
+    // Layout template methods
+
+    pub fn save_layout_template(&self, id: &str, name: &str, layout: &str, terminal_configs: &str) -> Result<(), String> {
+        if name.is_empty() || name.len() > 255 {
+            return Err("Template name must be 1-255 characters".to_string());
+        }
+        self.conn.execute(
+            "INSERT OR REPLACE INTO layout_templates (id, name, layout, terminal_configs, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![id, name, layout, terminal_configs, chrono::Utc::now().to_rfc3339()],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn list_layout_templates(&self) -> Result<Vec<LayoutTemplate>, String> {
+        let mut stmt = self.conn
+            .prepare("SELECT id, name, layout, terminal_configs, created_at FROM layout_templates ORDER BY created_at DESC")
+            .map_err(|e| e.to_string())?;
+
+        let templates = stmt.query_map([], |row| {
+            Ok(LayoutTemplate {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                layout: row.get(2)?,
+                terminal_configs: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        }).map_err(|e| e.to_string())?;
+
+        templates.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    }
+
+    pub fn load_layout_template(&self, id: &str) -> Result<LayoutTemplate, String> {
+        self.conn.query_row(
+            "SELECT id, name, layout, terminal_configs, created_at FROM layout_templates WHERE id = ?1",
+            params![id],
+            |row| Ok(LayoutTemplate {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                layout: row.get(2)?,
+                terminal_configs: row.get(3)?,
+                created_at: row.get(4)?,
+            }),
+        ).map_err(|e| e.to_string())
+    }
+
+    pub fn delete_layout_template(&self, id: &str) -> Result<(), String> {
+        self.conn.execute("DELETE FROM layout_templates WHERE id = ?1", params![id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     // App meta methods

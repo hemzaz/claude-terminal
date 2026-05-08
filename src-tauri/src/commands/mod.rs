@@ -14,6 +14,7 @@ pub mod error;
 pub mod fs;
 pub mod git;
 pub mod keybindings;
+pub mod layout;
 pub mod profile;
 pub mod session;
 pub mod snippet;
@@ -59,6 +60,8 @@ pub use git::{
     StashEntry, AutoStageMode, PullStrategy,
     ScannedGitRepo, PackageScript,
 };
+
+pub use layout::{save_layout_template, list_layout_templates, load_layout_template, delete_layout_template};
 
 pub use profile::{save_profile, get_profiles, delete_profile};
 
