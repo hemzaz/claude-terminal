@@ -263,7 +263,6 @@ fn main() {
             commands::session::save_session_summary,
             commands::session::get_session_summary,
             commands::session::export_session,
-            commands::session::search_session_history,
             // snippet
             commands::snippet::save_snippet,
             commands::snippet::get_snippets,
@@ -297,6 +296,10 @@ fn main() {
             // error
             commands::error::report_error,
             commands::error::set_error_reporting_enabled,
+            // keybindings
+            commands::keybindings::ensure_keybindings_file_exists,
+            commands::keybindings::read_keybindings,
+            commands::keybindings::open_keybindings_file,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

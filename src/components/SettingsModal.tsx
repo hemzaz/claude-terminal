@@ -676,7 +676,23 @@ export function SettingsModal() {
 
           {/* Keyboard Shortcuts */}
           <div>
-            <h3 className="text-text-primary text-[13px] font-medium mb-2">Keyboard Shortcuts</h3>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-text-primary text-[13px] font-medium">Keyboard Shortcuts</h3>
+              <button
+                onClick={async () => {
+                  try {
+                    await invoke('open_keybindings_file');
+                    toast.info('Keybindings', 'Edit and restart to apply changes');
+                  } catch {
+                    toast.error('Error', 'Could not open keybindings.json');
+                  }
+                }}
+                className="flex items-center gap-1 text-[11px] text-accent-primary hover:text-accent-secondary px-2 py-0.5 rounded hover:bg-bg-elevated transition-colors"
+              >
+                <Keyboard size={11} />
+                Edit keybindings.json
+              </button>
+            </div>
             <div className="bg-bg-primary rounded-md ring-1 ring-border p-3 space-y-1.5">
               {[
                 ['New Terminal', `${mod}+Shift+N`],

@@ -171,6 +171,10 @@ interface AppState {
   // Global hotkey actions
   setGlobalHotkey: (hotkey: string) => void;
   setAutoHideOnBlur: (enabled: boolean) => void;
+
+  // Keybinding overrides (loaded from disk at boot; NOT persisted to localStorage)
+  keybindingOverrides: Record<string, string>;
+  loadKeybindings: () => Promise<void>;
 }
 
 interface SavedTerminalConfig {
@@ -272,6 +276,9 @@ export const useAppStore = create<AppState>()(
       // Global hotkey — default Cmd+` (Meta+Backquote) on macOS.
       globalHotkey: 'Meta+Backquote',
       autoHideOnBlur: false,
+
+      // Keybinding overrides — populated at boot via loadKeybindings(); not persisted.
+      keybindingOverrides: {},
 
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       toggleSidebarCollapse: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
@@ -544,6 +551,17 @@ export const useAppStore = create<AppState>()(
       // Global hotkey
       setGlobalHotkey: (hotkey) => set({ globalHotkey: hotkey }),
       setAutoHideOnBlur: (enabled) => set({ autoHideOnBlur: enabled }),
+
+      // Keybindings — load from disk at boot; disk is source of truth
+      loadKeybindings: async () => {
+        try {
+          await invoke('ensure_keybindings_file_exists');
+          const overrides = await invoke<Record<string, string>>('read_keybindings');
+          set({ keybindingOverrides: overrides });
+        } catch {
+          // Non-fatal: fall back to empty overrides (defaults will be used)
+        }
+      },
     }),
     {
       name: 'claude-terminal-app',

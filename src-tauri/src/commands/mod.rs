@@ -13,6 +13,7 @@ pub mod claude_config;
 pub mod error;
 pub mod fs;
 pub mod git;
+pub mod keybindings;
 pub mod profile;
 pub mod session;
 pub mod snippet;
