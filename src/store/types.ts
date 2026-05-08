@@ -3,6 +3,10 @@
  * Import from here to avoid circular dependencies between slice files and appStore.ts.
  */
 
+import type { SavedTerminalConfig } from '../types/ipc';
+
+export type { SavedTerminalConfig } from '../types/ipc';
+
 export type GridLayout = '1x1' | '1x2' | '2x1' | '2x2' | '1x3' | '3x1' | '2x3' | '3x2' | '2x4' | '4x2';
 
 export type SplitOrientation = 'horizontal' | 'vertical';
@@ -37,16 +41,6 @@ export interface FileTabState {
   // Repo context for re-fetching HEAD (mode switches, reloads).
   repoRoot: string | null;
   relativePath: string | null;
-}
-
-export interface SavedTerminalConfig {
-  id: string;
-  label: string;
-  nickname: string | null;
-  working_directory: string;
-  claude_args: string[];
-  env_vars: Record<string, string>;
-  color_tag: string | null;
 }
 
 // ---------------------------------------------------------------------------

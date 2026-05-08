@@ -92,7 +92,7 @@ function SettingsTab() {
       const formatted = JSON.stringify(JSON.parse(raw), null, 2);
       setContent(formatted);
       setOriginalContent(formatted);
-    } catch (err) {
+    } catch (_err) {
       setContent('{}');
       setOriginalContent('{}');
     }

@@ -1,14 +1,14 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
-mod terminal;
 mod config;
 mod database;
-mod telemetry;
 mod error_reporter;
+mod telemetry;
+mod terminal;
 
-use tauri::{Emitter, Manager};
 use std::sync::Arc;
+use tauri::{Emitter, Manager};
 use tokio::sync::Mutex;
 
 pub struct AppState {
@@ -81,7 +81,9 @@ fn main() {
             // ── macOS native menubar ──────────────────────────────────────────
             #[cfg(target_os = "macos")]
             {
-                use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
+                use tauri::menu::{
+                    MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder,
+                };
 
                 let app_submenu = SubmenuBuilder::new(app, "Claude Terminal")
                     .about(None)
@@ -98,10 +100,9 @@ fn main() {
                 let new_term = MenuItemBuilder::with_id("menu-new-terminal", "New Terminal")
                     .accelerator("CmdOrCtrl+T")
                     .build(app)?;
-                let close_term =
-                    MenuItemBuilder::with_id("menu-close-terminal", "Close Terminal")
-                        .accelerator("CmdOrCtrl+W")
-                        .build(app)?;
+                let close_term = MenuItemBuilder::with_id("menu-close-terminal", "Close Terminal")
+                    .accelerator("CmdOrCtrl+W")
+                    .build(app)?;
                 let file_submenu = SubmenuBuilder::new(app, "File")
                     .item(&new_term)
                     .item(&close_term)
@@ -130,10 +131,9 @@ fn main() {
                     MenuItemBuilder::with_id("menu-toggle-hints", "Toggle Hints Panel")
                         .accelerator("F1")
                         .build(app)?;
-                let toggle_grid =
-                    MenuItemBuilder::with_id("menu-toggle-grid", "Toggle Grid View")
-                        .accelerator("CmdOrCtrl+G")
-                        .build(app)?;
+                let toggle_grid = MenuItemBuilder::with_id("menu-toggle-grid", "Toggle Grid View")
+                    .accelerator("CmdOrCtrl+G")
+                    .build(app)?;
                 let view_submenu = SubmenuBuilder::new(app, "View")
                     .item(&toggle_sidebar)
                     .item(&toggle_hints)
@@ -146,8 +146,7 @@ fn main() {
                     .item(&zoom)
                     .build()?;
 
-                let docs =
-                    MenuItemBuilder::with_id("menu-docs", "Documentation").build(app)?;
+                let docs = MenuItemBuilder::with_id("menu-docs", "Documentation").build(app)?;
                 let report =
                     MenuItemBuilder::with_id("menu-report-issue", "Report Issue").build(app)?;
                 let help_submenu = SubmenuBuilder::new(app, "Help")
@@ -165,25 +164,22 @@ fn main() {
                     .build()?;
 
                 app.set_menu(menu)?;
-                app.on_menu_event(|app, event| {
-                    match event.id().as_ref() {
-                        id @ ("menu-new-terminal" | "menu-close-terminal"
-                        | "menu-toggle-sidebar" | "menu-toggle-hints"
-                        | "menu-toggle-grid" | "menu-find") => {
-                            let _ = app.emit("menu-event", id);
-                        }
-                        "menu-docs" => {
-                            let _ = open::that(
-                                "https://github.com/hemzaz/claude-terminal#readme",
-                            );
-                        }
-                        "menu-report-issue" => {
-                            let _ = open::that(
-                                "https://github.com/hemzaz/claude-terminal/issues/new",
-                            );
-                        }
-                        _ => {}
+                app.on_menu_event(|app, event| match event.id().as_ref() {
+                    id @ ("menu-new-terminal"
+                    | "menu-close-terminal"
+                    | "menu-toggle-sidebar"
+                    | "menu-toggle-hints"
+                    | "menu-toggle-grid"
+                    | "menu-find") => {
+                        let _ = app.emit("menu-event", id);
                     }
+                    "menu-docs" => {
+                        let _ = open::that("https://github.com/hemzaz/claude-terminal#readme");
+                    }
+                    "menu-report-issue" => {
+                        let _ = open::that("https://github.com/hemzaz/claude-terminal/issues/new");
+                    }
+                    _ => {}
                 });
             }
 
@@ -271,6 +267,7 @@ fn main() {
             commands::session::save_session_summary,
             commands::session::get_session_summary,
             commands::session::export_session,
+            commands::session::search_session_history,
             // snippet
             commands::snippet::save_snippet,
             commands::snippet::get_snippets,

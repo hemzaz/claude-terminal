@@ -91,9 +91,6 @@ export function FileTreePanel() {
     } finally {
       setRootLoading(false);
     }
-    // rootChildren intentionally excluded — this would cause infinite reloads;
-    // refreshRoot is called on explicit triggers only.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rootPath, loadChildren]);
 
   useEffect(() => {

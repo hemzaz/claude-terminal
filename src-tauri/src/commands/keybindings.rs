@@ -6,12 +6,6 @@ fn keybindings_path() -> Option<std::path::PathBuf> {
         .map(|d| d.config_dir().join("keybindings.json"))
 }
 
-/// Expose the canonical path so the hot-reload watcher in `main.rs` can be
-/// seeded without duplicating the directory resolution logic.
-pub fn keybindings_file_path() -> Option<std::path::PathBuf> {
-    keybindings_path()
-}
-
 const DEFAULT_KEYBINDINGS: &str = r#"{
   "terminal.new": "Cmd+T",
   "terminal.new.shift": "Cmd+Shift+N",
@@ -43,8 +37,8 @@ const DEFAULT_KEYBINDINGS: &str = r#"{
 /// file if it does not already exist. Returns the file path as a String.
 #[command]
 pub async fn ensure_keybindings_file_exists() -> Result<String, String> {
-    let path = keybindings_path()
-        .ok_or_else(|| "Failed to determine config directory".to_string())?;
+    let path =
+        keybindings_path().ok_or_else(|| "Failed to determine config directory".to_string())?;
 
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
@@ -63,8 +57,8 @@ pub async fn ensure_keybindings_file_exists() -> Result<String, String> {
 /// Returns an empty map if the file does not exist (don't error).
 #[command]
 pub async fn read_keybindings() -> Result<HashMap<String, String>, String> {
-    let path = keybindings_path()
-        .ok_or_else(|| "Failed to determine config directory".to_string())?;
+    let path =
+        keybindings_path().ok_or_else(|| "Failed to determine config directory".to_string())?;
 
     if !path.exists() {
         return Ok(HashMap::new());
@@ -80,8 +74,8 @@ pub async fn read_keybindings() -> Result<HashMap<String, String>, String> {
 /// Opens `keybindings.json` in the user's default editor.
 #[command]
 pub async fn open_keybindings_file() -> Result<(), String> {
-    let path = keybindings_path()
-        .ok_or_else(|| "Failed to determine config directory".to_string())?;
+    let path =
+        keybindings_path().ok_or_else(|| "Failed to determine config directory".to_string())?;
 
     // Ensure the file exists before trying to open it
     if !path.exists() {

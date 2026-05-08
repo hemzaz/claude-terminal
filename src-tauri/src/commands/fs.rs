@@ -24,8 +24,8 @@ pub async fn list_directory(
         validate_path_is_trusted(&state, &path).await?;
 
         let mut entries: Vec<DirEntryInfo> = Vec::new();
-        let read_dir = std::fs::read_dir(&path)
-            .map_err(|e| format!("Failed to read directory: {}", e))?;
+        let read_dir =
+            std::fs::read_dir(&path).map_err(|e| format!("Failed to read directory: {}", e))?;
         for entry in read_dir.flatten() {
             let meta = match entry.metadata() {
                 Ok(m) => m,
@@ -57,15 +57,11 @@ pub async fn list_directory(
 /// Read a file as UTF-8 text. Refuses binary files and very large files so the
 /// editor can't be used to OOM the app.
 #[command]
-pub async fn read_text_file(
-    state: State<'_, AppState>,
-    path: String,
-) -> Result<String, String> {
+pub async fn read_text_file(state: State<'_, AppState>, path: String) -> Result<String, String> {
     wrap_cmd("read_text_file", async move {
         validate_path_is_trusted(&state, &path).await?;
 
-        let meta =
-            std::fs::metadata(&path).map_err(|e| format!("Failed to stat file: {}", e))?;
+        let meta = std::fs::metadata(&path).map_err(|e| format!("Failed to stat file: {}", e))?;
         if meta.is_dir() {
             return Err("Path is a directory".to_string());
         }
@@ -78,14 +74,11 @@ pub async fn read_text_file(
             ));
         }
 
-        let bytes =
-            std::fs::read(&path).map_err(|e| format!("Failed to read file: {}", e))?;
+        let bytes = std::fs::read(&path).map_err(|e| format!("Failed to read file: {}", e))?;
         // Quick binary sniff: any NUL byte in the first 8 KB → binary.
         let sniff_len = bytes.len().min(8192);
         if bytes[..sniff_len].contains(&0u8) {
-            return Err(
-                "File appears to be binary and cannot be edited as text.".to_string(),
-            );
+            return Err("File appears to be binary and cannot be edited as text.".to_string());
         }
         String::from_utf8(bytes).map_err(|_| "File is not valid UTF-8.".to_string())
     })
@@ -103,8 +96,7 @@ pub async fn write_text_file(
     wrap_cmd("write_text_file", async move {
         validate_path_is_trusted(&state, &path).await?;
 
-        let meta =
-            std::fs::metadata(&path).map_err(|e| format!("Failed to stat file: {}", e))?;
+        let meta = std::fs::metadata(&path).map_err(|e| format!("Failed to stat file: {}", e))?;
         if meta.is_dir() {
             return Err("Path is a directory".to_string());
         }
@@ -170,22 +162,30 @@ const SEARCH_MAX_TOTAL_MATCHES: u32 = 5000;
 const SEARCH_MAX_PER_FILE: usize = 200;
 
 fn search_should_skip_dir(name: &str) -> bool {
-    if SEARCH_IGNORE_DIRS.iter().any(|d| *d == name) {
+    if SEARCH_IGNORE_DIRS.contains(&name) {
         return true;
     }
     name.starts_with('.') && name.len() > 1
 }
 
-fn search_walk(
-    root: &std::path::Path,
-    dir: &std::path::Path,
-    query_lower: &str,
-    query_raw: &str,
+struct SearchWalkContext<'a> {
+    root: &'a std::path::Path,
+    query_lower: &'a str,
+    query_raw: &'a str,
     case_sensitive: bool,
     include_files: bool,
-    results: &mut Vec<FileSearchResult>,
-    total_matches: &mut u32,
-    files_seen: &mut u32,
+}
+
+struct SearchWalkState<'a> {
+    results: &'a mut Vec<FileSearchResult>,
+    total_matches: &'a mut u32,
+    files_seen: &'a mut u32,
+}
+
+fn search_walk(
+    ctx: &SearchWalkContext<'_>,
+    dir: &std::path::Path,
+    state: &mut SearchWalkState<'_>,
 ) -> bool {
     // Returns false to signal "stop walking" when a hard cap is hit.
     let read_dir = match std::fs::read_dir(dir) {
@@ -193,7 +193,8 @@ fn search_walk(
         Err(_) => return true,
     };
     for entry in read_dir.flatten() {
-        if *total_matches >= SEARCH_MAX_TOTAL_MATCHES || *files_seen >= SEARCH_MAX_FILES {
+        if *state.total_matches >= SEARCH_MAX_TOTAL_MATCHES || *state.files_seen >= SEARCH_MAX_FILES
+        {
             return false;
         }
         let name = entry.file_name().to_string_lossy().to_string();
@@ -209,17 +210,7 @@ fn search_walk(
             if search_should_skip_dir(&name) {
                 continue;
             }
-            if !search_walk(
-                root,
-                &path,
-                query_lower,
-                query_raw,
-                case_sensitive,
-                include_files,
-                results,
-                total_matches,
-                files_seen,
-            ) {
+            if !search_walk(ctx, &path, state) {
                 return false;
             }
             continue;
@@ -227,23 +218,23 @@ fn search_walk(
         if !meta.is_file() {
             continue;
         }
-        *files_seen += 1;
+        *state.files_seen += 1;
         let relative = path
-            .strip_prefix(root)
+            .strip_prefix(ctx.root)
             .unwrap_or(&path)
             .to_string_lossy()
             .replace('\\', "/");
 
         // Filename match (always cheap, ignores file size).
         let name_lower = name.to_lowercase();
-        let name_matches = if case_sensitive {
-            name.contains(query_raw)
+        let name_matches = if ctx.case_sensitive {
+            name.contains(ctx.query_raw)
         } else {
-            name_lower.contains(query_lower)
+            name_lower.contains(ctx.query_lower)
         };
 
         // Skip content scan for huge files, but still let filename matches through.
-        let scan_content = include_files && meta.len() <= SEARCH_MAX_FILE_BYTES;
+        let scan_content = ctx.include_files && meta.len() <= SEARCH_MAX_FILE_BYTES;
 
         let mut matches: Vec<SearchMatch> = Vec::new();
         if scan_content {
@@ -251,21 +242,22 @@ fn search_walk(
                 let sniff_len = bytes.len().min(8192);
                 if !bytes[..sniff_len].contains(&0u8) {
                     if let Ok(text) = std::str::from_utf8(&bytes) {
-                        let mut line_no: u32 = 0;
-                        for line in text.lines() {
-                            line_no += 1;
+                        for (line_no, line) in (1_u32..).zip(text.lines()) {
                             if matches.len() >= SEARCH_MAX_PER_FILE {
                                 break;
                             }
                             let haystack_lower;
-                            let haystack: &str = if case_sensitive {
+                            let haystack: &str = if ctx.case_sensitive {
                                 line
                             } else {
                                 haystack_lower = line.to_lowercase();
                                 &haystack_lower
                             };
-                            let needle: &str =
-                                if case_sensitive { query_raw } else { query_lower };
+                            let needle: &str = if ctx.case_sensitive {
+                                ctx.query_raw
+                            } else {
+                                ctx.query_lower
+                            };
                             let mut start = 0;
                             while let Some(idx) = haystack[start..].find(needle) {
                                 let abs_idx = start + idx;
@@ -286,8 +278,8 @@ fn search_walk(
                                     line_text: truncated_line,
                                     match_length: needle.chars().count() as u32,
                                 });
-                                *total_matches += 1;
-                                if *total_matches >= SEARCH_MAX_TOTAL_MATCHES
+                                *state.total_matches += 1;
+                                if *state.total_matches >= SEARCH_MAX_TOTAL_MATCHES
                                     || matches.len() >= SEARCH_MAX_PER_FILE
                                 {
                                     break;
@@ -304,7 +296,7 @@ fn search_walk(
         }
 
         if !matches.is_empty() || name_matches {
-            results.push(FileSearchResult {
+            state.results.push(FileSearchResult {
                 file_path: path.to_string_lossy().replace('\\', "/"),
                 relative_path: relative,
                 matches,
@@ -350,17 +342,19 @@ pub async fn search_in_files(
         let mut total_matches: u32 = 0;
         let mut files_seen: u32 = 0;
 
-        let completed = search_walk(
-            &root,
-            &root,
-            &query_lower,
-            &query,
+        let ctx = SearchWalkContext {
+            root: &root,
+            query_lower: &query_lower,
+            query_raw: &query,
             case_sensitive,
-            include_file_contents,
-            &mut results,
-            &mut total_matches,
-            &mut files_seen,
-        );
+            include_files: include_file_contents,
+        };
+        let mut walk_state = SearchWalkState {
+            results: &mut results,
+            total_matches: &mut total_matches,
+            files_seen: &mut files_seen,
+        };
+        let completed = search_walk(&ctx, &root, &mut walk_state);
 
         // Show files with content matches first, then filename-only matches.
         results.sort_by(|a, b| {

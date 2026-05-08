@@ -327,8 +327,7 @@ pub async fn list_memory_files(
 pub async fn read_memory_file(path: String) -> Result<String, String> {
     wrap_cmd("read_memory_file", async move {
         validate_claude_path(&path)?;
-        std::fs::read_to_string(&path)
-            .map_err(|e| format!("Failed to read memory file: {}", e))
+        std::fs::read_to_string(&path).map_err(|e| format!("Failed to read memory file: {}", e))
     })
     .await
 }
@@ -341,8 +340,7 @@ pub async fn write_memory_file(path: String, content: String) -> Result<(), Stri
         if let Some(parent) = std::path::Path::new(&path).parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
-        std::fs::write(&path, &content)
-            .map_err(|e| format!("Failed to write memory file: {}", e))
+        std::fs::write(&path, &content).map_err(|e| format!("Failed to write memory file: {}", e))
     })
     .await
 }
@@ -372,8 +370,7 @@ pub async fn list_claude_md_files() -> Result<Vec<ClaudeMdInfo>, String> {
                     if path.is_dir() {
                         let md_path = path.join("CLAUDE.md");
                         if md_path.exists() {
-                            let project_name =
-                                entry.file_name().to_string_lossy().to_string();
+                            let project_name = entry.file_name().to_string_lossy().to_string();
                             files.push(ClaudeMdInfo {
                                 path: md_path.to_string_lossy().to_string(),
                                 scope: "project".to_string(),

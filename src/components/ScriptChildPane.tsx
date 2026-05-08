@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { X, Package, Circle, GripHorizontal } from 'lucide-react';
 import { TerminalView } from './TerminalView';
-import type { TerminalConfig } from '../store/terminalStore';
+import type { TerminalConfig } from '../types/ipc';
 
 interface ScriptChildPaneProps {
   parentId: string;

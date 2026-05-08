@@ -42,10 +42,7 @@ pub async fn load_layout_template(
 }
 
 #[command]
-pub async fn delete_layout_template(
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<(), String> {
+pub async fn delete_layout_template(state: State<'_, AppState>, id: String) -> Result<(), String> {
     wrap_cmd("delete_layout_template", async move {
         let db = state.db.lock().await;
         db.delete_layout_template(&id)

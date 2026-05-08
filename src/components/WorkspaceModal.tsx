@@ -5,20 +5,12 @@ import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
+import type { SavedTerminalConfig } from '../types/ipc';
 
 interface WorkspaceInfo {
   name: string;
   terminal_count: number;
   created_at: string;
-}
-
-interface SavedTerminalConfig {
-  label: string;
-  nickname: string | null;
-  working_directory: string;
-  claude_args: string[];
-  env_vars: Record<string, string>;
-  color_tag: string | null;
 }
 
 export function WorkspaceModal() {

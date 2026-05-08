@@ -7,20 +7,10 @@ import { useTerminalStore } from '../store/terminalStore';
 import { homeDir } from '@tauri-apps/api/path';
 import { open } from '@tauri-apps/plugin-dialog';
 import type { WorktreeInfo, WorktreeDetectResult } from '../types/git';
+import type { ConfigProfile } from '../types/ipc';
 import { CLAUDE_MODELS, type ClaudeModelId } from '../lib/models';
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
-
-interface ConfigProfile {
-  id: string;
-  name: string;
-  description: string | null;
-  working_directory: string;
-  claude_args: string[];
-  env_vars: Record<string, string>;
-  is_default: boolean;
-  last_used_at: string | null;
-}
 
 const TAG_COLORS = [
   'bg-red-500',
@@ -165,6 +155,7 @@ export function NewTerminalModal() {
         worktreePath: newWorktreePath,
         branch: newBranchName,
         createBranch: !branchExists,
+        baseRef: !branchExists ? baseBranch || null : null,
       });
 
       // Add to list and select it
