@@ -44,6 +44,7 @@ export const useAppStore = create<AppState>()(
         seenUpdateSourceToast: state.seenUpdateSourceToast,
         globalHotkey: state.globalHotkey,
         autoHideOnBlur: state.autoHideOnBlur,
+        onboardingCompleted: state.onboardingCompleted,
       }),
     },
   ),
