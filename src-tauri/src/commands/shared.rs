@@ -6,6 +6,12 @@ use tauri::State;
 
 /// Wrap a Tauri command body so any `Err(String)` it returns is also reported
 /// to the error_reporter (fire-and-forget). The command's behavior is unchanged.
+///
+/// # Rename note (Issue #72)
+/// This function should be renamed to `with_error_reporting` — the current name
+/// reveals nothing about the error-reporting behaviour. Deferred until the sibling
+/// command modules (git, session, terminal, …) can be updated in the same PR so
+/// the rename is atomic.
 pub async fn wrap_cmd<T, F>(name: &'static str, fut: F) -> Result<T, String>
 where
     F: Future<Output = Result<T, String>>,

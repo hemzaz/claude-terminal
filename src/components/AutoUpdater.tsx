@@ -19,11 +19,11 @@ export function AutoUpdater() {
   // (a) users don't get two competing update paths, and (b) an unsigned .app
   // replacement doesn't re-trigger Gatekeeper quarantine on every release.
   // Users can flip to in-app updates from Settings.
-  const inAppDisabled = isMac && macUpdateSource === 'homebrew';
+  const inAppEnabled = !isMac || macUpdateSource === 'in-app';
 
-  // Check for updates on mount (skipped when in-app updater is disabled)
+  // Check for updates on mount (skipped when in-app updater is not enabled)
   useEffect(() => {
-    if (inAppDisabled) return;
+    if (!inAppEnabled) return;
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
@@ -39,15 +39,15 @@ export function AutoUpdater() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [inAppDisabled]);
+  }, [inAppEnabled]);
 
   // Show banner when update becomes available (e.g. from Settings check)
   useEffect(() => {
-    if (inAppDisabled) return;
+    if (!inAppEnabled) return;
     if (status === 'available' && !dismissed) {
       setShowBanner(true);
     }
-  }, [status, dismissed, inAppDisabled]);
+  }, [status, dismissed, inAppEnabled]);
 
   const dismissBanner = () => {
     setDismissed(true);
@@ -55,7 +55,7 @@ export function AutoUpdater() {
   };
 
   // Homebrew-managed mac users never see the in-app banner.
-  if (inAppDisabled) {
+  if (!inAppEnabled) {
     return null;
   }
 
