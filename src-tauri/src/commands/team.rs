@@ -107,7 +107,6 @@ pub async fn get_team_tasks(team_name: String) -> Result<Vec<TaskInfo>, String> 
             }
         }
 
-        // Sort by id
         tasks.sort_by(|a, b| a.id.cmp(&b.id));
 
         Ok(tasks)

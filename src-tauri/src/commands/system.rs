@@ -42,7 +42,6 @@ pub async fn get_claude_version() -> Result<String, String> {
 #[command]
 pub async fn check_claude_update() -> Result<UpdateCheckResult, String> {
     wrap_cmd("check_claude_update", async move {
-        // Get current version
         let current_output = shell_command("claude", &["--version"])
             .output()
             .map_err(|e| format!("Failed to get current version: {}", e))?;
@@ -55,7 +54,6 @@ pub async fn check_claude_update() -> Result<UpdateCheckResult, String> {
             return Err("Claude Code is not installed".to_string());
         }
 
-        // Get latest version from npm
         let npm_output = shell_command("npm", &["view", "@anthropic-ai/claude-code", "version"])
             .output()
             .map_err(|e| format!("Failed to check latest version: {}", e))?;
@@ -112,7 +110,6 @@ pub fn get_hints() -> Vec<HintCategory> {
 #[command]
 pub async fn check_system_requirements() -> Result<SystemStatus, String> {
     wrap_cmd("check_system_requirements", async move {
-        // Check Node.js
         let node_result = shell_command("node", &["--version"]).output();
 
         let (node_installed, node_version) = match node_result {
@@ -123,7 +120,6 @@ pub async fn check_system_requirements() -> Result<SystemStatus, String> {
             _ => (false, None),
         };
 
-        // Check npm
         let npm_result = shell_command("npm", &["--version"]).output();
 
         let (npm_installed, npm_version) = match npm_result {
@@ -134,7 +130,6 @@ pub async fn check_system_requirements() -> Result<SystemStatus, String> {
             _ => (false, None),
         };
 
-        // Check Claude Code
         let claude_result = shell_command("claude", &["--version"]).output();
 
         let (claude_installed, claude_version) = match claude_result {
