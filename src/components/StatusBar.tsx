@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
+import { reportError } from '../lib/reportError';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { CLAUDE_MODELS } from '../lib/models';
@@ -52,7 +53,7 @@ export function StatusBar() {
   const [claudeVersion, setClaudeVersion] = useState<string | null>(null);
 
   useEffect(() => {
-    getVersion().then(setAppVersion).catch(() => {});
+    getVersion().then(setAppVersion).catch(reportError('getVersion'));
     invoke<string>('get_claude_version')
       .then((v) => setClaudeVersion(v))
       .catch(() => setClaudeVersion(null));

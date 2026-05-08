@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
+import { reportError } from '../lib/reportError';
 import { useAppStore } from '../store/appStore';
 import type { FileTabState, ModalKind } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
@@ -336,10 +337,10 @@ export function CommandPalette() {
 
   useEffect(() => {
     inputRef.current?.focus();
-    invoke<HintCategory[]>('get_hints').then(setHints).catch(() => {});
-    invoke<Snippet[]>('get_snippets').then(setSnippets).catch(() => {});
-    invoke<ConfigProfile[]>('get_profiles').then(setProfiles).catch(() => {});
-    invoke<SessionHistoryEntry[]>('get_session_history').then(setSessions).catch(() => {});
+    invoke<HintCategory[]>('get_hints').then(setHints).catch(reportError('get_hints'));
+    invoke<Snippet[]>('get_snippets').then(setSnippets).catch(reportError('get_snippets'));
+    invoke<ConfigProfile[]>('get_profiles').then(setProfiles).catch(reportError('get_profiles'));
+    invoke<SessionHistoryEntry[]>('get_session_history').then(setSessions).catch(reportError('get_session_history'));
   }, []);
 
   // Determine prefix mode
