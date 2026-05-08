@@ -205,6 +205,20 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       writeToTerminal(terminalId, data).catch((err) => {
         console.error(`Failed to write to terminal ${terminalId}:`, err);
       });
+      // Fan out to broadcast group peers when this terminal is a member.
+      // Per-keystroke cost: each additional member triggers one IPC call
+      // (writeToTerminal → invoke('write_to_terminal')). Acceptable for
+      // N≤8 PTYs; revisit batching if max group size grows significantly.
+      const { broadcastGroupIds } = useTerminalStore.getState();
+      if (broadcastGroupIds.has(terminalId)) {
+        broadcastGroupIds.forEach((peerId) => {
+          if (peerId !== terminalId) {
+            useTerminalStore.getState().writeToTerminal(peerId, data).catch((err) => {
+              console.warn(`[broadcast] peer ${peerId} write failed:`, err);
+            });
+          }
+        });
+      }
     });
 
     const resizeObserver = new ResizeObserver(() => {
