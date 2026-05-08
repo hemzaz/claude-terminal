@@ -95,6 +95,9 @@ interface AppState {
   // on Windows. Persisted so the choice survives restarts.
   macUpdateSource: 'homebrew' | 'in-app';
 
+  // Whether the first-launch "update source" hint toast has already been shown.
+  seenUpdateSourceToast: boolean;
+
   toggleSidebar: () => void;
   toggleSidebarCollapse: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -156,6 +159,7 @@ interface AppState {
 
   // macOS update source actions
   setMacUpdateSource: (source: 'homebrew' | 'in-app') => void;
+  setSeenUpdateSourceToast: (seen: boolean) => void;
 }
 
 interface SavedTerminalConfig {
@@ -519,6 +523,8 @@ export const useAppStore = create<AppState>()(
 
       // macOS update source
       setMacUpdateSource: (source) => set({ macUpdateSource: source }),
+      seenUpdateSourceToast: false,
+      setSeenUpdateSourceToast: (seen) => set({ seenUpdateSourceToast: seen }),
     }),
     {
       name: 'claude-terminal-app',
@@ -540,6 +546,7 @@ export const useAppStore = create<AppState>()(
         orchestrationOpen: state.orchestrationOpen,
         lastSeenVersion: state.lastSeenVersion,
         macUpdateSource: state.macUpdateSource,
+        seenUpdateSourceToast: state.seenUpdateSourceToast,
       }),
     }
   )

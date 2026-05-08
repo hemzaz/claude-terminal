@@ -197,6 +197,28 @@ pub async fn update_terminal_nickname(
 }
 
 #[command]
+pub async fn set_terminal_pinned(
+    state: State<'_, AppState>,
+    id: String,
+    pinned: bool,
+) -> Result<(), String> {
+    wrap_cmd("set_terminal_pinned", async move {
+        {
+            let mut terminals = state.terminals.lock().await;
+            terminals.update_pinned(&id, pinned)?;
+        }
+        // Persist immediately so pinned state survives restart
+        let configs = {
+            let terminals = state.terminals.lock().await;
+            terminals.get_all_configs()
+        };
+        let db = state.db.lock().await;
+        db.save_last_session(&configs)
+    })
+    .await
+}
+
+#[command]
 pub async fn create_script_terminal(
     app: AppHandle,
     state: State<'_, AppState>,

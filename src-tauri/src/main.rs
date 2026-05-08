@@ -178,6 +178,7 @@ fn main() {
             commands::terminal::get_terminals,
             commands::terminal::update_terminal_label,
             commands::terminal::update_terminal_nickname,
+            commands::terminal::set_terminal_pinned,
             commands::terminal::create_script_terminal,
             commands::terminal::create_shell_terminal,
             // profile
